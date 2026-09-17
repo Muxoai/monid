@@ -113,52 +113,11 @@ export default defineEndpoint({
             }
             const status = utils.json.optionalGet(res.body, "$.data.status");
             if (exitCode === 0 && status === "SUCCEEDED") {
-                // SETTLE-WAIT (reconcile 2026-09-16) — same guard as the
-                // provider poll: this actor is PAY_PER_EVENT and its charge
-                // events sync ~5-10 s after completion; a first-tick read
-                // reconstructs pages from a partial usage total. Hold the
-                // run RUNNING until usageTotalUsd is stable (equal on two
-                // reads ≥3 ticks apart, non-zero) or 8 wait ticks elapse.
-                const waitUsd = utils.json.optionalNum(
-                    res.body,
-                    "$.data.usageTotalUsd",
-                );
-                const waitTicks = utils.json.optionalNum(
-                    data.lifecycle.state,
-                    "$.data.settleWaitTicks",
-                ) ?? 0;
-                const waitLastUsd = utils.json.optionalNum(
-                    data.lifecycle.state,
-                    "$.data.settleWaitLastUsd",
-                );
-                const waitSynced = waitTicks >= 3 && waitUsd !== undefined &&
-                    waitUsd > 0 && waitUsd === waitLastUsd;
-                if (!waitSynced && waitTicks < 8) {
-                    const carriedDatasetId = utils.json.optionalGet(
-                        res.body,
-                        "$.data.defaultDatasetId",
-                    ) ?? utils.json.optionalGet(
-                        data.lifecycle.state,
-                        "$.data.datasetId",
-                    );
-                    return {
-                        kind: "RUNNING",
-                        state: {
-                            externalRunId: runId,
-                            data: {
-                                ...(typeof carriedDatasetId === "string" &&
-                                        carriedDatasetId !== ""
-                                    ? { datasetId: carriedDatasetId }
-                                    : {}),
-                                settleWaitTicks: waitTicks + 1,
-                                ...(waitUsd !== undefined
-                                    ? { settleWaitLastUsd: waitUsd }
-                                    : {}),
-                            },
-                        },
-                        pollAfterMs: 2_000,
-                    };
-                }
+                // NO settle-wait (reconcile 2026-09-17, owner decision) —
+                // see the provider poll: the run settles immediately and
+                // this doc's consolidate fold-guards a lagging partial
+                // usageTotalUsd (pages reconstructed from a partial total
+                // fail the fold check and the derived fold settles).
                 const datasetId = utils.json.optionalGet(
                     res.body,
                     "$.data.defaultDatasetId",
@@ -251,6 +210,22 @@ export default defineEndpoint({
                             ...(totalUsd !== undefined
                                 ? { usageTotalUsd: totalUsd }
                                 : {}),
+                            // the LIVE rates the reconstruction used —
+                            // stashed so the consolidate's fold-guard
+                            // floors against the SAME truth, not the
+                            // pinned card (reconcile 2026-09-17)
+                            pricingPerEvent: {
+                                "search-page": { eventPriceUsd: pageRate },
+                                ...(perProfile > 0
+                                    ? {
+                                        [mode === "Full"
+                                            ? "full-profile"
+                                            : "full-profile-with-email"]: {
+                                            eventPriceUsd: perProfile,
+                                        },
+                                    }
+                                    : {}),
+                            },
                         },
                     },
                 };
@@ -327,6 +302,79 @@ export default defineEndpoint({
                     ...(profileKey !== undefined
                         ? { [profileKey]: body.maxItems }
                         : {}),
+                },
+            };
+        },
+        /** OVERRIDES the provider consolidate (reconcile 2026-09-17): the
+         *  provider fold-guard keys its items count on ARRAY outputs, but
+         *  this doc outputs an object — and its `searchPages` are
+         *  RECONSTRUCTED from the very `usageTotalUsd` being guarded, so
+         *  they cannot anchor the floor. The independent floor is what the
+         *  DELIVERED profiles alone must have cost at the pinned rates
+         *  (profiles × mode line + one charged page when any profile came
+         *  back): a lagging partial total below that floor claims nothing
+         *  and the derived fold settles (v1's "money follows evidence"
+         *  degradation — pages floor to ≥1 with profiles present). */
+        consolidate: ({ data, utils }) => {
+            const total = utils.json.optionalNum(
+                data.lifecycle?.state ?? null,
+                "$.data.usageTotalUsd",
+            );
+            if (total === undefined) return { credits: {} };
+            const profiles = utils.json.optionalNum(
+                data.output,
+                "$.profileCount",
+            ) ?? 0;
+            const mode = utils.json.optionalGet(
+                data.input.body ?? null,
+                "$.profileScraperMode",
+            );
+            // LIVE rates first (the poll stashes actorChargeEvents —
+            // finding 5: baked constants drift; the run record is truth),
+            // pinned model amounts as fallback.
+            const livePage = utils.json.optionalNum(
+                data.lifecycle?.state ?? null,
+                "$.data.pricingPerEvent.search-page.eventPriceUsd",
+            );
+            const liveProfile = mode === "Full"
+                ? utils.json.optionalNum(
+                    data.lifecycle?.state ?? null,
+                    "$.data.pricingPerEvent.full-profile.eventPriceUsd",
+                )
+                : mode === "Full + email search"
+                ? utils.json.optionalNum(
+                    data.lifecycle?.state ?? null,
+                    "$.data.pricingPerEvent.full-profile-with-email" +
+                        ".eventPriceUsd",
+                )
+                : undefined;
+            const model = data.usage.model;
+            let pageRate = 0;
+            let profileRate = 0;
+            if (model.kind === "COMPOSITE") {
+                for (
+                    const [id, component] of Object.entries(model.components)
+                ) {
+                    if (component.kind !== "PER_UNIT") continue;
+                    if (id === "search_page") {
+                        pageRate = livePage ?? component.consumes.amount;
+                    } else if (id === "full_profile" && mode === "Full") {
+                        profileRate = liveProfile ??
+                            component.consumes.amount;
+                    } else if (
+                        id === "full_profile_with_email" &&
+                        mode === "Full + email search"
+                    ) {
+                        profileRate = liveProfile ??
+                            component.consumes.amount;
+                    }
+                }
+            }
+            const floor = profiles * profileRate +
+                (profiles > 0 ? pageRate : 0);
+            return {
+                credits: {
+                    ...(total >= floor - 1e-9 ? { default: total } : {}),
                 },
             };
         },

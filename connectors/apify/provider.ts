@@ -78,13 +78,6 @@ export default defineProvider({
             /** linkedin-profile-search reconstruction (page-basis billing). */
             searchPages: z.number().int().nonnegative().optional(),
             profileCount: z.number().int().nonnegative().optional(),
-            /** SETTLE-WAIT bookkeeping (reconcile 2026-09-16): PAY_PER_EVENT
-             *  charge events sync ~5-10 s AFTER run completion (measured:
-             *  t+0s $0, t+3s start-fee only, t+7s full), so the poll holds
-             *  the run RUNNING until usageTotalUsd is stable or the grace
-             *  cap expires. Ticks waited + the last observed total. */
-            settleWaitTicks: z.number().int().nonnegative().optional(),
-            settleWaitLastUsd: z.number().optional(),
         }),
         start: async ({ data, utils, logger }) => {
             logger.info("starting apify actor run", {
@@ -156,54 +149,15 @@ export default defineProvider({
             }
             const status = utils.json.optionalGet(res.body, "$.data.status");
             if (exitCode === 0 && status === "SUCCEEDED") {
-                // SETTLE-WAIT (reconcile 2026-09-16, live-measured): on
-                // PAY_PER_EVENT actors the run record's charge counters sync
-                // ~5-10 s AFTER completion (probe: t+0s $0, t+3s start-fee
-                // only, t+7s full; 8/46 actors settled a partial receipt in
-                // one live pass). Do not settle on the first post-completion
-                // tick — keep RUNNING until usageTotalUsd has been observed
-                // EQUAL on two reads at least 3 ticks apart (and non-zero),
-                // or 8 wait ticks (~16 s) have elapsed. The consolidate's
-                // incomplete-receipt guard backstops the grace-expired path.
-                const waitModel = utils.json.optionalGet(
-                    res.body,
-                    "$.data.pricingInfo.pricingModel",
-                );
-                const waitUsd = utils.json.optionalNum(
-                    res.body,
-                    "$.data.usageTotalUsd",
-                );
-                if (waitModel === "PAY_PER_EVENT") {
-                    const ticks = data.lifecycle.state.data?.settleWaitTicks ??
-                        0;
-                    const lastUsd = data.lifecycle.state.data
-                        ?.settleWaitLastUsd;
-                    const synced = ticks >= 3 && waitUsd !== undefined &&
-                        waitUsd > 0 && waitUsd === lastUsd;
-                    if (!synced && ticks < 8) {
-                        const carriedDatasetId = utils.json.optionalGet(
-                            res.body,
-                            "$.data.defaultDatasetId",
-                        ) ?? data.lifecycle.state.data?.datasetId;
-                        return {
-                            kind: "RUNNING",
-                            state: {
-                                externalRunId: runId,
-                                data: {
-                                    ...(typeof carriedDatasetId === "string" &&
-                                            carriedDatasetId !== ""
-                                        ? { datasetId: carriedDatasetId }
-                                        : {}),
-                                    settleWaitTicks: ticks + 1,
-                                    ...(waitUsd !== undefined
-                                        ? { settleWaitLastUsd: waitUsd }
-                                        : {}),
-                                },
-                            },
-                            pollAfterMs: 2_000,
-                        };
-                    }
-                }
+                // NO settle-wait (reconcile 2026-09-17, owner decision):
+                // PAY_PER_EVENT charge counters sync ~3-10 s AFTER
+                // completion (measured n=8: mean 6.4 s, median 6.25 s,
+                // p95 ~9.6 s), but holding the run hostage to the vendor's
+                // billing pipeline trades latency for a number the doc can
+                // derive itself. The run settles IMMEDIATELY; the
+                // consolidate's fold-guard makes a lagging partial total
+                // harmless (claim wins only at-or-above the derived fold —
+                // v1's max(calculated, actual) posture, def-local).
                 const datasetId = utils.json.optionalGet(
                     res.body,
                     "$.data.defaultDatasetId",
@@ -369,57 +323,121 @@ export default defineProvider({
          *  draws, and the drift guard (apify:pricing) alarms on vendor
          *  repricing. One pool ⇒ id `default`. */
         credits: { default: { label: "US dollars" } },
-        /** The vendor's OWN claim (design D27): PAY_PER_EVENT run records
-         *  report `usageTotalUsd`, stashed into the threaded state by the
-         *  poll fns — nothing to strip (state is never user-facing).
-         *  Entry OMITTED when absent (falls back to the derived fold);
-         *  a present claim WINS and the pinned-rate fold becomes a LIVE
-         *  cross-check on every run (`usage.mismatch.derived` on
-         *  disagreement — the survey's between-runs guard, per-run). */
+        /** The vendor's OWN claim (design D27), FOLD-GUARDED (reconcile
+         *  2026-09-17): PAY_PER_EVENT charge counters sync ~3-10 s AFTER
+         *  run completion (measured), so the `usageTotalUsd` read at settle
+         *  can be a lagging PARTIAL. Rather than holding the run for the
+         *  vendor's billing pipeline, the claim is accepted only when it
+         *  covers the DERIVED FOLD (delivered items × pinned rates + flat
+         *  lines — the same arithmetic the engine folds, and the number
+         *  every lagged run eventually re-read to, exactly): below the fold
+         *  the receipt is incomplete and NOTHING is claimed, so the fold
+         *  settles — v1's max(calculatedCost, actualCost) ratchet, done
+         *  def-locally with zero added latency. At-or-above the fold the
+         *  vendor's word WINS (compute-priced actors like
+         *  reddit-comment-scraper bill past the card — that stays), and the
+         *  fold rides as the live cross-check (`usage.mismatch.derived`).
+         *  The fold here uses the GENERIC items keying (the sole metered
+         *  line); multi-metered actors' add-on lines are not counted, which
+         *  only lowers the floor — permissive to legitimately HIGHER
+         *  claims, never accepting of lower ones. */
         consolidate: ({ data, utils }) => {
             const total = utils.json.optionalNum(
                 data.lifecycle?.state ?? null,
                 "$.data.usageTotalUsd",
             );
-            // INCOMPLETE-RECEIPT guard (reconcile 2026-09-16), the
-            // settle-wait's backstop for the grace-expired path: on
-            // PAY_PER_EVENT runs the per-item charge events land ~5-10 s
-            // after completion, so a claim that cannot cover more than the
-            // model's FLAT lines while dataset items were delivered is a
-            // partial read — omit it and let the derived fold (pinned
-            // rates × evidence; all 8 live-lagged runs re-read to exactly
-            // that fold) settle the run. Scoped to PAY_PER_EVENT: a
-            // PRICE_PER_DATASET_ITEM / compute-priced total below the flat
-            // floor is a legitimate vendor number (reddit-comment-scraper,
-            // live).
+            if (total === undefined) return { credits: {} };
             const pricingModel = utils.json.optionalGet(
                 data.lifecycle?.state ?? null,
                 "$.data.pricingModel",
             );
-            if (pricingModel === "PAY_PER_EVENT" && total !== undefined) {
-                const items = Array.isArray(data.output)
-                    ? data.output.length
+            const items = Array.isArray(data.output) ? data.output.length : 0;
+            const model = data.usage.model;
+            // LIVE rate for a component id, from the poll-stashed
+            // actorChargeEvents (event names normalize onto our snake_case
+            // ids — the drift guard's derived join, design D28); pinned
+            // amounts are the fallback. Live rates matter here: a fixture
+            // or vendor whose live rate sits BELOW the pinned card must
+            // not have its legitimate claim rejected by a pinned-rate
+            // floor.
+            const liveRates = utils.json.optionalGet(
+                data.lifecycle?.state ?? null,
+                "$.data.pricingPerEvent",
+            );
+            // closed terms carry no TS annotations — the default types
+            // the parameter as string
+            const liveRateFor = (id = "") => {
+                if (
+                    liveRates === null || liveRates === undefined ||
+                    typeof liveRates !== "object" || Array.isArray(liveRates)
+                ) return undefined;
+                for (const [name, event] of Object.entries(liveRates)) {
+                    const normalized = name
+                        .replace(/^apify-/, "")
+                        .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+                        .replaceAll("-", "_")
+                        .replaceAll(".", "_")
+                        .toLowerCase();
+                    if (normalized === id) {
+                        return utils.json.optionalNum(
+                            event,
+                            "$.eventPriceUsd",
+                        );
+                    }
+                }
+                return undefined;
+            };
+            let fold = 0;
+            if (pricingModel === "PRICE_PER_DATASET_ITEM") {
+                // per-result billing: the bill IS items × the record's own
+                // unit price (v1 actualCostFromPricing); no flat lines
+                const perUnit = utils.json.optionalNum(
+                    data.lifecycle?.state ?? null,
+                    "$.data.pricePerUnitUsd",
+                );
+                const pinned = model.kind === "PER_UNIT"
+                    ? model.consumes.amount
+                    : model.kind === "COMPOSITE"
+                    ? (Object.values(model.components)
+                        .find((component) => component.kind === "PER_UNIT")
+                        ?.consumes.amount ?? 0)
                     : 0;
-                let flatFloor = 0;
-                const model = data.usage.model;
+                fold = items * (perUnit ?? pinned);
+            } else if (pricingModel === "PAY_PER_EVENT") {
                 if (model.kind === "PER_CALL") {
-                    flatFloor = model.consumes.amount;
+                    fold = model.consumes.amount;
+                } else if (model.kind === "PER_UNIT") {
+                    fold = Math.ceil(items / (model.every ?? 1)) *
+                        (liveRateFor(model.unit.toLowerCase()) ??
+                            model.consumes.amount);
                 } else if (model.kind === "COMPOSITE") {
+                    let metered = false;
                     for (
-                        const component of Object.values(model.components)
+                        const [id, component] of Object.entries(
+                            model.components,
+                        )
                     ) {
                         if (component.kind === "PER_CALL") {
-                            flatFloor += component.consumes.amount;
+                            fold += liveRateFor(id) ??
+                                component.consumes.amount;
+                        } else if (
+                            component.kind === "PER_UNIT" && !metered
+                        ) {
+                            // generic keying: items land on the FIRST
+                            // metered line (mirrors the provider evidence)
+                            fold +=
+                                Math.ceil(items / (component.every ?? 1)) *
+                                (liveRateFor(id) ?? component.consumes.amount);
+                            metered = true;
                         }
                     }
                 }
-                if (items > 0 && total <= flatFloor + 1e-9) {
-                    return { credits: {} };
-                }
             }
+            // other regimes (compute-priced, absent): fold stays 0 — the
+            // vendor's number is orthogonal to our card and always wins
             return {
                 credits: {
-                    ...(total !== undefined ? { default: total } : {}),
+                    ...(total >= fold - 1e-9 ? { default: total } : {}),
                 },
             };
         },
