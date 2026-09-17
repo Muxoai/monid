@@ -51,3 +51,17 @@ Deno.test({
         );
     },
 });
+
+Deno.test("tinyfish#fetch happy (recorded 2026-09-16): real traffic, FREE settle", async () => {
+    const unit = await testSealedUnit("tinyfish#fetch");
+    const fixture = await loadFixture(`${fixturesDir}happy.json`);
+    const result = await runEndpoint({
+        unit,
+        input: { body: { urls: ["https://example.com"] } },
+        mode: "replay",
+        fixture,
+    });
+    assertEquals(result.httpStatus, 200);
+    assertEquals(result.isProviderError, false);
+    assertEquals(result.usage, { credits: {}, evidence: {} });
+});
