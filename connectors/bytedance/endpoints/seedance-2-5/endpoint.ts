@@ -63,7 +63,7 @@ export default defineEndpoint({
         ],
     },
     /** PUBLIC identity: the friendly model name (design D1). */
-    endpoint: "/seedance-2.5",
+    endpoint: "/v1/video/seedance-2.5",
     request: { method: "POST", path: "/api/v3/contents/generations/tasks" },
     input: {
         schema: {

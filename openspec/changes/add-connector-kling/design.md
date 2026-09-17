@@ -249,3 +249,13 @@ v1 carried a per-model documentation page on every def; the port kept only
 the provider-level root. Restored: each endpoint's meta.docsUrl is v1's
 model-specific kling.ai/document-api page (t2v and i2v share their model's
 page, as v1 did).
+
+## D15 — endpoint identities stay wire-faithful (reconcile addendum, 2026-09-16)
+
+The reconcile's faithful-naming rule restored v1 catalog ids elsewhere
+(fundable `deals/{id}`, suzanne `v1/models/{job_id}/download`, bytedance
+`/v1/video/seedance-*`). Kling is the inverse case and KEEPS its v2 ids:
+v1's `/v1/video/kling-*-t2v` names were INVENTED over a shared `/tasks`
+wire, while v2's ids ARE the vendor's own create-task paths
+(`/text-to-video/kling-3.0`, …). Faithful means the vendor's path — v2
+already is.

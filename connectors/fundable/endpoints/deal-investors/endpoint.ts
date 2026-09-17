@@ -17,9 +17,8 @@ export default defineEndpoint({
         docsUrl: "https://docs.tryfundable.ai/api-reference/deals/investors",
         categories: ["funding-data"],
     },
-    /** PUBLIC identity (design D22): see endpoints/deal/endpoint.ts —
-     *  v1 id `/deals/{id}/investors`. */
-    endpoint: "/deal/investors",
+    // PUBLIC identity = request.path — the v1-faithful
+    // `fundable#deals/{id}/investors` (see endpoints/deal/endpoint.ts).
     request: { method: "GET", path: "/deals/{id}/investors" },
     input: { schema: { pathParams: zDealPathParams } },
     usage: {

@@ -101,11 +101,11 @@ Deno.test("fundable: usage fn provenance — provider settle fns shared by all 1
     // substitutes pathParams at run time) while the PUBLIC identity is
     // the brace-free singular form
     assertEquals(
-        bundle.endpoints["fundable#deal"].request.url,
+        bundle.endpoints["fundable#deals/{id}"].request.url,
         "https://www.tryfundable.ai/api/v1/deals/{id}",
     );
     assertEquals(
-        bundle.endpoints["fundable#deal/investors"].request.url,
+        bundle.endpoints["fundable#deals/{id}/investors"].request.url,
         "https://www.tryfundable.ai/api/v1/deals/{id}/investors",
     );
 });
