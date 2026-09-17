@@ -16,6 +16,11 @@ export default defineEndpoint({
             "cheaply before any page is scraped.",
         docsUrl: "https://docs.context.dev/api-reference/web-scraping/sitemap",
         categories: ["web-extraction"],
+        notes: [
+            "A crawl with the 'search' filter costs 2 credits instead " +
+            "of 1 (live-confirmed 2026-09-16: vendor claim 2 on a " +
+            "searched crawl, 1 plain).",
+        ],
     },
     request: { method: "GET", path: "/web/scrape/sitemap" },
     input: { schema: { queryParams: zScrapeSitemapQueryParams } },

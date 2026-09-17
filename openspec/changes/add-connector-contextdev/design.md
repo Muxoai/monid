@@ -162,3 +162,13 @@ the fold agree; the cached (0), above-list (2), not-found and searched cases
 are their own chains or in-test edits. Replay matched the engine's URLs on
 the first run for all nineteen endpoints; the wire form is self-consistent,
 not live-verified (tasks 7.1).
+
+## D11 — reconcile live verification (addendum, 2026-09-16)
+
+All 19 endpoints ran live (tasks 7.1 partially discharged): every vendor
+`credits_consumed` claim matched the derived fold with zero mismatch
+signals. The two card divergences this change introduced are CONFIRMED:
+`web/screenshot` bills 1 credit (v1's 5 was an older card — D3), and the
+`web/scrape/sitemap` search surcharge is real (plain crawl claimed 1,
+searched crawl claimed 2). people/enrich claimed 20 on a found person.
+Synthetic fixtures remain to be replaced with recordings.
