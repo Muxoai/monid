@@ -18,10 +18,15 @@ export {
 } from "./fixtures.ts";
 export {
     estimateEndpoint,
+    fixtureReader,
     liveSkip,
+    loadEndpoint,
+    loadResource,
+    type LoadResourceOptions,
     runEndpoint,
     type RunEndpointOptions,
     type RunMode,
     testBundle,
+    testResourceUnit,
     testSealedUnit,
 } from "./runner.ts";

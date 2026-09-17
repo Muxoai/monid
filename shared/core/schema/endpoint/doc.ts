@@ -12,6 +12,7 @@ import { zEndpointMeta } from "../meta/endpoint.ts";
 import { zJsonSchemaDoc } from "./json-schema-doc.ts";
 import { zFnRef } from "../fn-table/ref.ts";
 import { zTimeouts } from "../sections/timeouts.ts";
+import { zResourceId } from "../resource/ids.ts";
 import { zCredits, zUsageModel } from "../usage/model/mod.ts";
 
 /**
@@ -87,6 +88,11 @@ export const zEndpointDoc = z.strictObject({
          *  A resolved claim WINS over the derived fold at settle
          *  (design D27). */
         consolidate: zFnRef.optional(),
+        /** The estimate re-run cadence (design D40) — PRESENT means the
+         *  estimate reads `elapsedMs` and hosts re-price the hold on
+         *  this cadence while RUNNING. Requires lifecycle.poll + a
+         *  metered model (compile-checked). */
+        updateEstimateEveryMs: z.number().int().positive().optional(),
     }),
     /**
      * Async run protocol (engine ≥ config schema.async_since). When present
@@ -101,6 +107,40 @@ export const zEndpointDoc = z.strictObject({
         /** JSON Schema of the fn-owned `state.data` bag — engine-validated
          *  per tick (typed state, resolved endpoint ?? provider). */
         stateSchema: zJsonSchemaDoc.optional(),
+    }).optional(),
+    /** Endpoint↔resource bindings (design D32/D43), compiled: the
+     *  purpose-keyed block with fn slots as $fn refs, the binding
+     *  invariants (provisions ≤1, targeted keys, alias uniqueness)
+     *  already compile-checked. Presence unlocks `utils.resources` and
+     *  demands a ResourceReader at load. Gate order is canonical:
+     *  uses → updates → releases → reads, declaration order within. */
+    resources: z.strictObject({
+        provisions: z.array(z.strictObject({
+            id: zResourceId,
+            seed: zFnRef,
+        })).optional(),
+        uses: z.array(z.strictObject({
+            id: zResourceId,
+            key: z.string().min(1).optional(),
+            as: z.string().min(1).optional(),
+            ensure: zFnRef.optional(),
+        })).optional(),
+        updates: z.array(z.strictObject({
+            id: zResourceId,
+            key: z.string().min(1),
+            as: z.string().min(1).optional(),
+        })).optional(),
+        releases: z.array(z.strictObject({
+            id: zResourceId,
+            key: z.string().min(1),
+            as: z.string().min(1).optional(),
+        })).optional(),
+        reads: z.array(z.strictObject({
+            id: zResourceId,
+            key: z.string().min(1).optional(),
+            as: z.string().min(1).optional(),
+            ensure: zFnRef.optional(),
+        })).optional(),
     }).optional(),
     timeouts: zTimeouts,
     /** Hash of the stable serialization (minus this field) — covers $fn ids. */
@@ -121,6 +161,19 @@ export function fnKeysOf(doc: EndpointDoc): string[] {
         keys.push(doc.lifecycle.start.$fn.key);
         if (doc.lifecycle.poll) keys.push(doc.lifecycle.poll.$fn.key);
         if (doc.lifecycle.stop) keys.push(doc.lifecycle.stop.$fn.key);
+    }
+    if (doc.resources) {
+        for (const binding of doc.resources.provisions ?? []) {
+            keys.push(binding.seed.$fn.key);
+        }
+        for (
+            const binding of [
+                ...doc.resources.uses ?? [],
+                ...doc.resources.reads ?? [],
+            ]
+        ) {
+            if (binding.ensure) keys.push(binding.ensure.$fn.key);
+        }
     }
     return [...new Set(keys)];
 }

@@ -44,6 +44,15 @@ const CONTRACT_PATHS = [
     "shared/core/schema/usage/model/mod.ts",
     "shared/core/schema/sections/usage.ts", // usage def section (model/estimate)
     "shared/core/schema/json/util.ts", // JsonUtil interface (the ABI) + JsonPathError
+    "shared/core/schema/resource/billing.ts", // the resource family (0.2.0):
+    "shared/core/schema/resource/ops.ts", //   op ctx/outcomes + ResourceOpUtils
+    "shared/core/schema/resource/row.ts", //   target/row/query (the reader port)
+    "shared/core/schema/resource/doc.ts", //   resource doc format
+    "shared/core/schema/sections/resource-binding.ts", // endpoint binding shape
+    "shared/core/schema/sections/webhooks.ts", // webhook section shapes
+    "shared/core/schema/hooks/resource-binding.ts", // seed/ensure contracts
+    "shared/core/schema/hooks/webhooks.ts", // webhook fn contracts
+    "shared/core/schema/hooks/accrue.ts", // usage.accrue contract
     "config.yml", // contract constants
 ];
 
