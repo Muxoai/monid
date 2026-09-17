@@ -124,6 +124,10 @@ Deno.test("opoint#search-advanced happy (recorded 2026-09-16): real traffic sett
     });
     const output = result.output as Record<string, unknown>;
     const docs = (output.document ?? []) as Record<string, unknown>[];
+    // pin the fixture count (PR review): an empty projection must FAIL,
+    // not vacuously pass the leak loop below
+    assertEquals(output.documents, 1);
+    assertEquals(docs.length, 1);
     for (const doc of docs) {
         // the projection holds on REAL traffic, not just synthetic shapes
         for (
@@ -163,9 +167,9 @@ Deno.test({
             false,
             JSON.stringify(result.output),
         );
-        assertEquals(result.usage, {
-            credits: { default: 1 },
-            evidence: { CALL: 1 },
-        });
+        // live convention: shape, not amounts (PR review) — the flat
+        // call is evidenced; the pool drain amount is replay's to pin
+        assertEquals(Object.keys(result.usage.evidence), ["CALL"]);
+        assertEquals(typeof result.usage.credits.default, "number");
     },
 });

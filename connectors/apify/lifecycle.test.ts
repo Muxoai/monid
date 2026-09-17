@@ -207,6 +207,33 @@ Deno.test("apify#harvestapi/linkedin-profile-search: pages reconstructed from LI
     assertEquals(output.profileCount, 2);
 });
 
+Deno.test("apify: lagging PAY_PER_EVENT partial is dropped by the fold-guard (fold settles, no settle-wait)", async () => {
+    const fixture = await loadFixture(
+        `${HERE}fixtures/pay-per-event-lagging.json`,
+    );
+    const id = "apify#apify/facebook-events-scraper";
+    const result = await runEndpoint({
+        unit: await testSealedUnit(id),
+        input: inputFor(id),
+        mode: "replay",
+        fixture,
+    });
+    assertEquals(result.httpStatus, 200);
+    // The terminal poll caught the usage aggregation mid-flight:
+    // usageTotalUsd $0.001 covers only the actor-start charge while 2
+    // items already exist. Live-measured lag (n=8): total trails
+    // SUCCEEDED by mean 6.4s / p95 ~9.6s, then lands exactly on the
+    // fold. The consolidate floors the claim at what the delivered
+    // items must cost at the run's OWN live rates ($0.001 + 2×$0.007 =
+    // $0.015 here, matching the pinned card): a below-fold claim is a
+    // lagging partial — claim nothing, the derived fold settles as
+    // credits with no mismatch. The run itself is never held back.
+    assertEquals(result.usage, {
+        credits: { default: 0.015 },
+        evidence: { actor_start: 1, event: 2 },
+    });
+});
+
 Deno.test("apify#harvestapi/linkedin-profile-search-by-name: mode-selected settle (run-succeeded chain)", async () => {
     const fixture = await loadFixture(`${HERE}fixtures/run-succeeded.json`);
     const id = "apify#harvestapi/linkedin-profile-search-by-name";
