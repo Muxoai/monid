@@ -54,6 +54,14 @@ export default defineEndpoint({
             "and profile counts ride the output. Runs asynchronously.",
         docsUrl: "https://apify.com/harvestapi/linkedin-profile-search",
         categories: ["linkedin", "people-enrichment"],
+        notes: [
+            "Sparse result pages are still charged - searchPages can " +
+            "exceed ceil(profiles / 25) when the query returns thin " +
+            "pages.",
+            "Segmented queries (multi-location, multi-company) each " +
+            "charge at least one search page even when a segment " +
+            "returns zero profiles.",
+        ],
     },
     /** PUBLIC identity: the actor's own slug path (design D22) —
      *  mechanically derived from request.path, pinned for readability. */
@@ -105,6 +113,52 @@ export default defineEndpoint({
             }
             const status = utils.json.optionalGet(res.body, "$.data.status");
             if (exitCode === 0 && status === "SUCCEEDED") {
+                // SETTLE-WAIT (reconcile 2026-09-16) — same guard as the
+                // provider poll: this actor is PAY_PER_EVENT and its charge
+                // events sync ~5-10 s after completion; a first-tick read
+                // reconstructs pages from a partial usage total. Hold the
+                // run RUNNING until usageTotalUsd is stable (equal on two
+                // reads ≥3 ticks apart, non-zero) or 8 wait ticks elapse.
+                const waitUsd = utils.json.optionalNum(
+                    res.body,
+                    "$.data.usageTotalUsd",
+                );
+                const waitTicks = utils.json.optionalNum(
+                    data.lifecycle.state,
+                    "$.data.settleWaitTicks",
+                ) ?? 0;
+                const waitLastUsd = utils.json.optionalNum(
+                    data.lifecycle.state,
+                    "$.data.settleWaitLastUsd",
+                );
+                const waitSynced = waitTicks >= 3 && waitUsd !== undefined &&
+                    waitUsd > 0 && waitUsd === waitLastUsd;
+                if (!waitSynced && waitTicks < 8) {
+                    const carriedDatasetId = utils.json.optionalGet(
+                        res.body,
+                        "$.data.defaultDatasetId",
+                    ) ?? utils.json.optionalGet(
+                        data.lifecycle.state,
+                        "$.data.datasetId",
+                    );
+                    return {
+                        kind: "RUNNING",
+                        state: {
+                            externalRunId: runId,
+                            data: {
+                                ...(typeof carriedDatasetId === "string" &&
+                                        carriedDatasetId !== ""
+                                    ? { datasetId: carriedDatasetId }
+                                    : {}),
+                                settleWaitTicks: waitTicks + 1,
+                                ...(waitUsd !== undefined
+                                    ? { settleWaitLastUsd: waitUsd }
+                                    : {}),
+                            },
+                        },
+                        pollAfterMs: 2_000,
+                    };
+                }
                 const datasetId = utils.json.optionalGet(
                     res.body,
                     "$.data.defaultDatasetId",

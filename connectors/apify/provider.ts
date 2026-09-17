@@ -78,6 +78,13 @@ export default defineProvider({
             /** linkedin-profile-search reconstruction (page-basis billing). */
             searchPages: z.number().int().nonnegative().optional(),
             profileCount: z.number().int().nonnegative().optional(),
+            /** SETTLE-WAIT bookkeeping (reconcile 2026-09-16): PAY_PER_EVENT
+             *  charge events sync ~5-10 s AFTER run completion (measured:
+             *  t+0s $0, t+3s start-fee only, t+7s full), so the poll holds
+             *  the run RUNNING until usageTotalUsd is stable or the grace
+             *  cap expires. Ticks waited + the last observed total. */
+            settleWaitTicks: z.number().int().nonnegative().optional(),
+            settleWaitLastUsd: z.number().optional(),
         }),
         start: async ({ data, utils, logger }) => {
             logger.info("starting apify actor run", {
@@ -149,6 +156,54 @@ export default defineProvider({
             }
             const status = utils.json.optionalGet(res.body, "$.data.status");
             if (exitCode === 0 && status === "SUCCEEDED") {
+                // SETTLE-WAIT (reconcile 2026-09-16, live-measured): on
+                // PAY_PER_EVENT actors the run record's charge counters sync
+                // ~5-10 s AFTER completion (probe: t+0s $0, t+3s start-fee
+                // only, t+7s full; 8/46 actors settled a partial receipt in
+                // one live pass). Do not settle on the first post-completion
+                // tick — keep RUNNING until usageTotalUsd has been observed
+                // EQUAL on two reads at least 3 ticks apart (and non-zero),
+                // or 8 wait ticks (~16 s) have elapsed. The consolidate's
+                // incomplete-receipt guard backstops the grace-expired path.
+                const waitModel = utils.json.optionalGet(
+                    res.body,
+                    "$.data.pricingInfo.pricingModel",
+                );
+                const waitUsd = utils.json.optionalNum(
+                    res.body,
+                    "$.data.usageTotalUsd",
+                );
+                if (waitModel === "PAY_PER_EVENT") {
+                    const ticks = data.lifecycle.state.data?.settleWaitTicks ??
+                        0;
+                    const lastUsd = data.lifecycle.state.data
+                        ?.settleWaitLastUsd;
+                    const synced = ticks >= 3 && waitUsd !== undefined &&
+                        waitUsd > 0 && waitUsd === lastUsd;
+                    if (!synced && ticks < 8) {
+                        const carriedDatasetId = utils.json.optionalGet(
+                            res.body,
+                            "$.data.defaultDatasetId",
+                        ) ?? data.lifecycle.state.data?.datasetId;
+                        return {
+                            kind: "RUNNING",
+                            state: {
+                                externalRunId: runId,
+                                data: {
+                                    ...(typeof carriedDatasetId === "string" &&
+                                            carriedDatasetId !== ""
+                                        ? { datasetId: carriedDatasetId }
+                                        : {}),
+                                    settleWaitTicks: ticks + 1,
+                                    ...(waitUsd !== undefined
+                                        ? { settleWaitLastUsd: waitUsd }
+                                        : {}),
+                                },
+                            },
+                            pollAfterMs: 2_000,
+                        };
+                    }
+                }
                 const datasetId = utils.json.optionalGet(
                     res.body,
                     "$.data.defaultDatasetId",
@@ -326,6 +381,42 @@ export default defineProvider({
                 data.lifecycle?.state ?? null,
                 "$.data.usageTotalUsd",
             );
+            // INCOMPLETE-RECEIPT guard (reconcile 2026-09-16), the
+            // settle-wait's backstop for the grace-expired path: on
+            // PAY_PER_EVENT runs the per-item charge events land ~5-10 s
+            // after completion, so a claim that cannot cover more than the
+            // model's FLAT lines while dataset items were delivered is a
+            // partial read — omit it and let the derived fold (pinned
+            // rates × evidence; all 8 live-lagged runs re-read to exactly
+            // that fold) settle the run. Scoped to PAY_PER_EVENT: a
+            // PRICE_PER_DATASET_ITEM / compute-priced total below the flat
+            // floor is a legitimate vendor number (reddit-comment-scraper,
+            // live).
+            const pricingModel = utils.json.optionalGet(
+                data.lifecycle?.state ?? null,
+                "$.data.pricingModel",
+            );
+            if (pricingModel === "PAY_PER_EVENT" && total !== undefined) {
+                const items = Array.isArray(data.output)
+                    ? data.output.length
+                    : 0;
+                let flatFloor = 0;
+                const model = data.usage.model;
+                if (model.kind === "PER_CALL") {
+                    flatFloor = model.consumes.amount;
+                } else if (model.kind === "COMPOSITE") {
+                    for (
+                        const component of Object.values(model.components)
+                    ) {
+                        if (component.kind === "PER_CALL") {
+                            flatFloor += component.consumes.amount;
+                        }
+                    }
+                }
+                if (items > 0 && total <= flatFloor + 1e-9) {
+                    return { credits: {} };
+                }
+            }
             return {
                 credits: {
                     ...(total !== undefined ? { default: total } : {}),
