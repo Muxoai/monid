@@ -16,7 +16,8 @@ export default defineEndpoint({
             "fundraising history, funding rounds, amounts raised, " +
             "investors, and valuation (funding_detail), plus mergers, " +
             "acquisitions, and investment activity (mna_and_investment) — " +
-            "are Enterprise-tier sections. List the sections you want in " +
+            "are available at premium per-section rates. List the sections " +
+            "you want in " +
             "the 'sections' filter (required — billing is per section). " +
             "The response data is keyed by section.",
         docsUrl: "https://docs.akta.pro/api-reference/company-data",
@@ -119,13 +120,13 @@ export default defineEndpoint({
                 funding_detail: {
                     kind: UsageModelKind.PER_UNIT,
                     unit: Unit.RESULT,
-                    description: "Enterprise-tier section",
+                    description: "Premium-rate section (3 credits)",
                     consumes: { credit: "default", amount: 3 },
                 },
                 mna_and_investment: {
                     kind: UsageModelKind.PER_UNIT,
                     unit: Unit.RESULT,
-                    description: "Enterprise-tier section",
+                    description: "Premium-rate section (5 credits)",
                     consumes: { credit: "default", amount: 5 },
                 },
             },

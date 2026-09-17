@@ -23,6 +23,13 @@ export default defineEndpoint({
             "capture complete nested comment structures.",
         docsUrl: "https://apify.com/crawlerbros/reddit-comment-scraper",
         categories: ["reddit"],
+        notes: [
+            "The vendor's own meter has charged well past this card in " +
+            "live runs ($0.201 for a run returning zero items, " +
+            "2026-09-16) - the actor appears to bill for scraped work " +
+            "that never reaches the dataset, and the vendor claim wins " +
+            "the settle.",
+        ],
     },
     /** PUBLIC identity: the actor's own slug path (design D22) —
      *  mechanically derived from request.path, pinned for readability. */

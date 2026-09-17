@@ -17,10 +17,12 @@ export default defineProvider({
     meta: {
         displayName: "Octen",
         summary: "Real-time web search, extraction, and embeddings.",
+        // No gateway clause: the OpenAI/Anthropic-compatible endpoints are
+        // disabled in v1 itself ($0 placeholders) and not ported here —
+        // the description names only what this connector exposes.
         description: "Real-time access to the live web — minute-fresh web " +
-            "and broad multi-query search, clean content extraction, text " +
-            "embeddings, and a search-grounded model gateway " +
-            "(OpenAI/Anthropic-compatible).",
+            "and broad multi-query search, clean content extraction, and " +
+            "text embeddings.",
         homepageUrl: "https://octen.ai",
         docsUrl: "https://docs.octen.ai",
         categories: ["web-search"],

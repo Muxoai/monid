@@ -58,10 +58,12 @@ export default defineProvider({
             "are asynchronous; poll the run rather than blocking on it.",
             "The completed run returns a video_url that EXPIRES in about 24 " +
             "hours — download it promptly.",
-            "Reference URLs must be public https:// URLs — Ark fetches them " +
-            "server-side, so the target has to be reachable.",
+            "Reference URLs must be public https:// URLs (Ark fetches them " +
+            "server-side, so the target has to be reachable) or Ark " +
+            "asset://<id> references from the Asset Center.",
             "Reference images and videos containing real human faces are " +
-            "rejected upstream.",
+            "rejected upstream — use BytePlus digital characters or " +
+            "authorized assets instead.",
             "Reference-video runs have upstream minimum-token floors, and " +
             "bill at the vendor's separate reference-video rate; the " +
             "returned usage reflects both automatically.",

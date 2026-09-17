@@ -11,6 +11,7 @@ export const zEnrichmentQueryParams = z.object({
             "company_hierarchy, digital_presence, financial_estimate, " +
             "location, management_profile, product_offering, " +
             "strategic_signal, customer_profile, industry, technology. " +
-            "funding_detail and mna_and_investment are Enterprise-tier.",
+            "funding_detail and mna_and_investment bill at premium " +
+            "per-section rates (3 and 5 credits).",
     ),
 }).strict();
