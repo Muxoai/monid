@@ -209,6 +209,23 @@
         "ploid#v1/linkedin/search",
         "ploid#v1/search",
         "ploid#v1/socials",
+        "saperly#call-recordings",
+        "saperly#call-transcripts",
+        "saperly#get-calls",
+        "saperly#get-numbers",
+        "saperly#inbound-calls",
+        "saperly#inbound-messages",
+        "saperly#list-calls",
+        "saperly#list-languages",
+        "saperly#list-messages",
+        "saperly#list-numbers",
+        "saperly#list-voices",
+        "saperly#place-calls",
+        "saperly#provision-numbers",
+        "saperly#release-numbers",
+        "saperly#send-messages",
+        "saperly#sync-numbers",
+        "saperly#update-numbers",
         "surf#dex/token/price",
         "surf#exchange/candles",
         "surf#exchange/coverage",
@@ -321,5 +338,7 @@
         "tinyfish#fetch",
         "tinyfish#search"
     ],
-    "resources": []
+    "resources": [
+        "saperly/phone-number"
+    ]
 }
