@@ -1,6 +1,7 @@
 {
     "v1/generations/text-to-3d": {
         "body": {
+            "model": "sculptor",
             "prompt": "a low-poly forest dragon, game-ready, mossy bark texture",
             "params": { "faces": 500000, "pbr": true },
             "outputs": ["glb"]

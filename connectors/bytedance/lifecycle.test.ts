@@ -316,9 +316,16 @@ Deno.test("bytedance: the input schema rejects before the wire", async () => {
         withUrl("data:image/png;base64,iVBOR"),
         "inline base64 data: URL",
     );
-    await rejects(withUrl("asset://abc123"), "asset:// reference");
     await rejects(withUrl("http://example.test/a.png"), "plain http://");
     await rejects(withUrl("not-a-url"), "malformed reference URL");
+    // asset://<id> is ACCEPTED — v1 took Ark Asset Center references and
+    // advertised them in its notes; the v2 port had silently dropped them
+    // (restored in the 2026-09-16 reconcile)
+    const assetEstimate = await estimateFor(
+        "bytedance#seedance-2.5",
+        withUrl("asset://abc123"),
+    );
+    assertEquals(typeof assetEstimate.credits.default, "number");
 });
 
 Deno.test({

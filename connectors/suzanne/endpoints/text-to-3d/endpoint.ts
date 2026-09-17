@@ -31,7 +31,12 @@ export default defineEndpoint({
         categories: ["3d-generation"],
     },
     request: { method: "POST", path: "/v1/generations/text-to-3d" },
-    input: { schema: { body: zTextTo3dBody } },
+    // Vendor drift 2026-09-16: TextCreateJobRequest now REQUIRES `model`
+    // (live 400 on omission — pydantic "Field required") — the doc must say
+    // so, so the engine gates it pre-flight instead of the vendor gating it
+    // post-flight. Mirror stays optional (D25); the binding states the
+    // requirement.
+    input: { schema: { body: zTextTo3dBody.required({ model: true }) } },
     // ASYNC generation: a durable poll loop needs a large WHOLE-RUN budget
     // while the submit itself stays a quick kickoff. The vendor documents
     // 30 s–2 min single-image, 1–4 min multi-view and a 20-min practical
