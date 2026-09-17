@@ -161,7 +161,41 @@ export default defineEndpoint({
                     },
                     body: { connectionId: createdId },
                 });
-                if (bind.status < 200 || bind.status >= 300) {
+                let bound = bind.status >= 200 && bind.status < 300;
+                if (!bound && bind.status >= 500) {
+                    // AMBIGUOUS: the Idempotency-Key makes RETRYING the
+                    // bind safe — it does NOT make a delete safe (a 5xx
+                    // may have committed upstream, and the number would
+                    // then point at the connection we destroy).
+                    // RECONCILE against the number record first.
+                    const check = await utils.http({
+                        method: "GET",
+                        path: "/numbers/" + numberId,
+                    });
+                    bound = $.optionalStr(check.body, "$.connectionId") ===
+                        createdId;
+                    if (!bound) {
+                        logger.error(
+                            "repair bind outcome unresolved — connection " +
+                                "kept (a leaked free connection beats a " +
+                                "dangling pointer); retry /update-numbers",
+                            { numberId, createdId },
+                        );
+                        return {
+                            kind: "COMPLETED" as const,
+                            httpStatus: 502,
+                            providerHttpStatus: bind.status,
+                            output: {
+                                code: "connection_repair_failed",
+                                message: "connection bind unresolved — " +
+                                    "retry the update",
+                            } as Json,
+                        };
+                    }
+                }
+                if (!bound) {
+                    // a clean 4xx — the vendor definitively REJECTED the
+                    // bind; the fresh connection is a plain orphan
                     try {
                         await utils.http({
                             method: "DELETE",

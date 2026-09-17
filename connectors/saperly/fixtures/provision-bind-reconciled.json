@@ -1,6 +1,6 @@
 {
-    "name": "provision-degraded-bind",
-    "description": "The paid-number containment: purchase succeeds, the bind 500s (AMBIGUOUS), the reconcile read shows the number definitively unbound - the resource persists CONNECTION-LESS (repair via /update-numbers), the orphan connection is best-effort deleted, and the run still completes as a success with the provision seed.",
+    "name": "provision-bind-reconciled",
+    "description": "The bind 500s but COMMITTED upstream: the reconcile read shows the number attached to OUR connection - the run treats it as bound (seed carries the pointer) and the connection is NOT deleted.",
     "calls": [
         {
             "req": {
@@ -98,24 +98,13 @@
                 "body": {
                     "id": "num-1",
                     "phoneNumber": "+14155559999",
+                    "connectionId": "conn-1",
                     "country": "US",
                     "numberType": "local",
                     "monthlyPriceCents": 200,
                     "currency": "USD",
                     "nextChargeAt": "2026-10-16T00:00:00Z",
                     "createdAt": "2026-09-16T00:00:00Z"
-                }
-            }
-        },
-        {
-            "req": {
-                "method": "DELETE",
-                "url": "{{request.origin}}/connections/conn-1"
-            },
-            "res": {
-                "status": 200,
-                "body": {
-                    "ok": true
                 }
             }
         }

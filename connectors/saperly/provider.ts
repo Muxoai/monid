@@ -10,6 +10,11 @@ import { defineProvider, type Json, presets } from "@shared/core";
  * ownership machinery below exists at all): `Idempotency-Key` honored on
  * all mutating endpoints.
  *
+ * RATE CARD (https://saperly.com/docs/pricing, confirmed against the
+ * live OpenAPI 2026-09-16): $2/month per number (flat — no proration,
+ * no refunds), $0.28 per started minute of AI call time, $0.025 per
+ * SMS segment. Every card in this connector cites this table.
+ *
  * The provider-wide invariants, each enforced structurally:
  *   - POOLED TENANCY: upstream list endpoints return EVERY tenant's rows.
  *     No endpoint ever relays an unfiltered pooled list — reads are served
@@ -115,7 +120,7 @@ export default defineProvider({
             "via the resource lifecycle, released any time.",
         homepageUrl: "https://saperly.com",
         docsUrl: "https://saperly.com/docs",
-        categories: ["agentic-phone"],
+        categories: ["agentic-phone", "sms"],
         notes: [
             "Phone numbers are OWNED RESOURCES: number-scoped endpoints " +
             "only operate on numbers this workspace provisioned — a " +
@@ -199,8 +204,14 @@ export default defineProvider({
                 const readNum = (key: string) =>
                     $.optionalNum(body, "$.payload." + key) ??
                         $.optionalNum(body, "$." + key);
-                const numberId = read("numberId");
-                const callId = read("callId") ?? read("id");
+                const numberId = read("numberId") ??
+                    // the generic `id` names the NUMBER on number.*
+                    // events — never a run correlation there
+                    (event.startsWith("number.") ? read("id") : undefined);
+                // the generic `id` fallback is CALL-scoped: on any other
+                // event an `id` is that event's own entity, not a call
+                const callId = read("callId") ??
+                    (event.startsWith("call.") ? read("id") : undefined);
                 // WHO — decided once, shared by every WHAT arm below
                 const who = numberId !== undefined
                     ? {
@@ -300,8 +311,9 @@ export default defineProvider({
                     };
                 }
                 if (event.startsWith("number.")) {
-                    const target = numberId ?? read("id");
-                    if (target === undefined) {
+                    // numberId already folds the number-scoped `id`
+                    // fallback — who (resource) and what (refresh) agree
+                    if (numberId === undefined) {
                         return { who, what: { action: "ignore" } };
                     }
                     return {
@@ -310,7 +322,7 @@ export default defineProvider({
                             action: "refresh",
                             target: {
                                 resource: "saperly/phone-number",
-                                externalId: target,
+                                externalId: numberId,
                             },
                         },
                     };

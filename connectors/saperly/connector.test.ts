@@ -53,6 +53,9 @@ const NOOP_LOGGER = {
 // provision-numbers — the 4-call saga
 // ---------------------------------------------------------------------------
 
+// RATE TABLE under test (https://saperly.com/docs/pricing, confirmed
+// 2026-09-16): $2/month number rent, $0.28 per started call minute,
+// $0.025 per SMS segment — the pins below are the vendor's tiers.
 Deno.test("saperly provision: happy saga — seed, quote claim, stripped output", async () => {
     const result = await runEndpoint({
         unit: await testSealedUnit("saperly#provision-numbers"),
@@ -122,6 +125,24 @@ Deno.test("saperly provision: a bind failure degrades — connection-less seed, 
     assertEquals(
         (seed.data as Record<string, Json>).externalRefs,
         undefined,
+    );
+});
+
+Deno.test("saperly provision: an ambiguous bind that COMMITTED reconciles as bound — connection kept", async () => {
+    const result = await runEndpoint({
+        unit: await testSealedUnit("saperly#provision-numbers"),
+        input: PROVISION_INPUT,
+        mode: "replay",
+        // bind 500s, but the reconcile read shows OUR connection attached
+        // — the fixture ends WITHOUT a DELETE (a delete would fail replay)
+        fixture: await fixture("provision-bind-reconciled"),
+    });
+    assertEquals(result.httpStatus, 201);
+    const seed = result.resources?.provisions?.[0];
+    assert(seed !== undefined);
+    assertEquals(
+        (seed.data as Record<string, Json>).externalRefs,
+        { connection: "conn-1" },
     );
 });
 
@@ -380,6 +401,28 @@ Deno.test("saperly update-numbers: a STALE pointer repairs (create + bind)", asy
     );
 });
 
+Deno.test("saperly update-numbers: an ambiguous repair bind reconciles as bound — no delete", async () => {
+    const result = await runEndpoint({
+        unit: await testSealedUnit("saperly#update-numbers"),
+        input: {
+            body: {
+                numberId: "num-1",
+                connection: { instructions: "Be brief." },
+            },
+        },
+        mode: "replay",
+        // repair-bind 500s; the reconcile read shows the number attached
+        // to the fresh connection — the fixture ends WITHOUT a DELETE
+        fixture: await fixture("update-repair-ambiguous"),
+        resources: OWNED,
+    });
+    assertEquals(result.httpStatus, 200);
+    assertEquals(
+        result.output,
+        { numberId: "num-1", status: "connection_created" },
+    );
+});
+
 Deno.test("saperly release-numbers: local ack + the RELEASES settle mark", async () => {
     const result = await runEndpoint({
         unit: await testSealedUnit("saperly#release-numbers"),
@@ -593,6 +636,30 @@ Deno.test("saperly webhooks: route WHAT — the v1 action table", () => {
             target: {
                 resource: "saperly/phone-number",
                 externalId: "num-1",
+            },
+        },
+    );
+    // a number.* payload carrying only the generic `id` still correlates
+    // to the RESOURCE (never a run) — who and what agree on one verdict
+    assertEquals(
+        hook.route(delivery({
+            eventType: "number.deleted",
+            payload: { id: "num-9" },
+        })),
+        {
+            who: {
+                kind: "resource",
+                target: {
+                    resource: "saperly/phone-number",
+                    externalId: "num-9",
+                },
+            },
+            what: {
+                action: "refresh",
+                target: {
+                    resource: "saperly/phone-number",
+                    externalId: "num-9",
+                },
             },
         },
     );

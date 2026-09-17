@@ -35,7 +35,7 @@ export const zProvisionNumberBody = z.object({
         "Kind of number: local (geographic area code) or toll_free (8xx, " +
             "free for callers). Both are $2/month.",
     ),
-    country: zCountry,
+    country: zCountry.default("US"),
     connection: zProvisionConnectionInput.describe(
         "The number's AI persona — REQUIRED. Created and attached " +
             "internally; update it later via /update-numbers.",
@@ -347,14 +347,27 @@ export default defineEndpoint({
                     output: res.body,
                 };
             }
+            if (numberId === undefined) {
+                // a 2xx purchase with NO readable id: settle's seed will
+                // throw PROVISION_CONSTRUCT (the alarm — the run stays
+                // uncharged host-side), but a bind never happened, so
+                // the pre-created connection is a plain orphan — delete
+                // it instead of leaking it into the workspace.
+                await deleteOrphan();
+            }
 
             // 5. BIND the pre-created connection. The number is PAID —
-            //    NO failure may escape this block: any failure degrades
-            //    to a connection-less resource (repaired via
-            //    /update-numbers) + orphan delete. The error log IS the
-            //    alarm.
+            //    NO failure may escape this block: a definitive
+            //    rejection degrades to a connection-less resource
+            //    (repaired via /update-numbers) + orphan delete; an
+            //    AMBIGUOUS outcome (5xx / a thrown transport — the bind
+            //    may have committed upstream) is RECONCILED against the
+            //    number record before any delete: a paid number must
+            //    never point at a connection we destroyed. The error
+            //    log IS the alarm.
             let bound = false;
             if (numberId !== undefined) {
+                let ambiguous = false;
                 try {
                     const bind = await utils.http({
                         method: "POST",
@@ -363,15 +376,64 @@ export default defineEndpoint({
                         body: { connectionId },
                     });
                     bound = bind.status >= 200 && bind.status < 300;
+                    // a clean 4xx is the vendor REJECTING the bind; a
+                    // 5xx proves nothing about whether it committed
+                    ambiguous = !bound && bind.status >= 500;
                 } catch (bindError) {
+                    ambiguous = true;
                     logger.error(
                         "number bought but its connection bind THREW — " +
-                            "degraded resource; repair via /update-numbers",
+                            "outcome unknown; reconciling",
                         { numberId, error: String(bindError) },
                     );
                 }
-                if (!bound) {
+                if (!bound && ambiguous) {
+                    // RECONCILE: the number record is the truth
+                    try {
+                        const check = await utils.http({
+                            method: "GET",
+                            path: "/numbers/" + numberId,
+                        });
+                        const attached = $.optionalStr(
+                            check.body,
+                            "$.connectionId",
+                        );
+                        if (attached === connectionId) {
+                            // the failure lied — the bind committed
+                            bound = true;
+                        } else if (
+                            check.status >= 200 && check.status < 300 &&
+                            attached === undefined
+                        ) {
+                            // definitively unbound — safe to clean up
+                            await deleteOrphan();
+                        } else {
+                            // inconclusive read (or a foreign
+                            // connection): KEEP ours — a leaked free
+                            // connection beats a dangling pointer
+                            logger.error(
+                                "bind outcome unresolved — connection " +
+                                    "kept; repair via /update-numbers",
+                                { numberId, connectionId },
+                            );
+                        }
+                    } catch (reconcileError) {
+                        logger.error(
+                            "bind reconcile read THREW — connection " +
+                                "kept; repair via /update-numbers",
+                            {
+                                numberId,
+                                connectionId,
+                                error: String(reconcileError),
+                            },
+                        );
+                    }
+                } else if (!bound) {
+                    // definitive 4xx rejection — the orphan is safe to
+                    // delete
                     await deleteOrphan();
+                }
+                if (!bound) {
                     logger.error(
                         "number provisioned without its connection — " +
                             "repair via /update-numbers",

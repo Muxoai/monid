@@ -7,8 +7,10 @@ import { z } from "zod";
  * forgiving optional* reads).
  */
 
-/** Phase 1 is US-only (product constraint). */
-export const zCountry = z.literal("US").default("US").describe(
+/** Phase 1 is US-only (product constraint). Vendor-shaped and
+ *  default-free here — OUR `.default("US")` tightening lives at each
+ *  endpoint/resource binding. */
+export const zCountry = z.literal("US").describe(
     "ISO 3166-1 alpha-2 country code. Phase 1 supports 'US' only.",
 );
 
@@ -90,9 +92,19 @@ export const zProvisionConnectionInput = z.object({
     ),
 }).strict();
 
-/** Persona PATCH input — at least one field. */
-export const zConnectionPatchInput = z.object(saperlyConnectionInputShape)
-    .strict().refine(
-        (c) => Object.values(c).some((v) => v !== undefined),
-        { message: "Provide at least one connection field to update" },
-    );
+/** Persona PATCH input — at least one field. "At least one of" is a
+ *  z.union of .required() arms (the contactout pattern) — the form that
+ *  SURVIVES compilation as `anyOf`; a .refine would be silently dropped
+ *  and the PUBLISHED contract would accept `{}`. */
+const zConnectionPatchBase = z.object(saperlyConnectionInputShape).strict();
+export const zConnectionPatchInput = z.union([
+    zConnectionPatchBase.required({ name: true }),
+    zConnectionPatchBase.required({ instructions: true }),
+    zConnectionPatchBase.required({ language: true }),
+    zConnectionPatchBase.required({ tts: true }),
+    zConnectionPatchBase.required({ llm: true }),
+    zConnectionPatchBase.required({ callControl: true }),
+    zConnectionPatchBase.required({ complianceEnabled: true }),
+    zConnectionPatchBase.required({ disclosure: true }),
+    zConnectionPatchBase.required({ smsAutoReply: true }),
+]).describe("Provide at least one connection field to update.");

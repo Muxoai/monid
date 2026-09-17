@@ -52,7 +52,7 @@ export default defineResource({
      *  live on the bound endpoints (compile-checked supersets). */
     inputs: {
         create: z.object({
-            country: zCountry,
+            country: zCountry.default("US"),
             connection: zProvisionConnectionInput,
         }),
         /** `connection` optional HERE (catalog shape): TWO endpoints bind
