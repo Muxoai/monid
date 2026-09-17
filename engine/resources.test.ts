@@ -391,6 +391,25 @@ Deno.test("resources: ensure seeds surface BEFORE the run (v1 ordering)", async 
     assertEquals(await again.ensure({}), []);
 });
 
+Deno.test("resources: run() hands ensure seeds to the admit port before start", async () => {
+    const bundle = await bundleOf();
+    const admitted: string[] = [];
+    const engine = new Engine({
+        transport: scripted([{ status: 200, body: [] }]),
+        resources: reader([]),
+        scopeKey: "ws-42",
+        // the host's write — run() must call it BEFORE start executes
+        admit: (seeds) => {
+            admitted.push(...seeds.map((seed) => seed.externalId));
+            return Promise.resolve();
+        },
+    });
+    const read = await engine.load(sealUnit(bundle, "resdemo#widgets/read"));
+    const done = await read.run({});
+    assertEquals(done.httpStatus, 200);
+    assertEquals(admitted, ["ws-42:default"]);
+});
+
 Deno.test("resources: utils.sleep is bounded — a per-call breach is FN_CONTRACT", async () => {
     const bundle = await bundleOf((connectors) => {
         connectors[0].endpoints.push({

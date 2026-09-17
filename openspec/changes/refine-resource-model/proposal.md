@@ -35,12 +35,14 @@ only consumer) and adds the local host loop.
   → reads.
 - **Webhooks**: the `account` wrapper dies (scope is positional);
   `correlate` + `dispatch` merge into ONE `route(delivery) → {who, what}`;
-  `verify.payload` becomes a real template (must contain `${rawBody}`).
-- **Slugs explicit everywhere**: ResourceDef gains required `slug`
-  (folder === slug asserted); endpoint `endpoint:` becomes required (the
-  `?? request.path` derivation dies); a committed `connectors/ids.lock.json`
-  + `deno task ids:check` guard makes identity removals/renames a
-  deliberate, reviewable act.
+  `verify.payload` becomes a real template (must contain `${rawBody}` and
+  `${timestamp}` — freshness bound to the HMAC).
+- **Slugs + the identity lock**: ResourceDef gains required `slug`
+  (folder === slug asserted); endpoint `endpoint:` STAYS optional
+  (`?? request.path` — amended post-review: the default is reasonable);
+  a committed `connectors/ids.lock.json` + `deno task ids:check` guard
+  makes identity drift, removals and renames a deliberate, reviewable
+  act.
 - **Local host loop**: `IResourceStore` port (resource-verb methods:
   provision/refresh/release/get/list + owned) with a Deno KV default
   adaptor; `engine:run` persists seeds/effects through it;

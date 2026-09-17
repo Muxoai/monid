@@ -219,21 +219,23 @@ Webhooks are DECLARED on docs and EXECUTED by the host ingress, scope
 POSITIONAL: a hook on the provider def is the vendor-account stream
 (`webhooks[slug]`, no wrapper); a hook on a resource def is a per-resource
 registration (`subscribe` required there). Each carries a declarative HMAC
-`verify` descriptor (`payload` is a template that MUST contain `${rawBody}`)
-plus ONE pure `route(delivery) → {who, what}` fn — who ∈ resource / alias / run
-/ unhandled, what ∈ `run` / `signal-run` / `refresh` / `ignore`. No `subscribe`
-= manual registration — the host logs the callback URL to paste (saperly).
+`verify` descriptor (`payload` is a template that MUST contain `${rawBody}` and
+`${timestamp}` — freshness bound to the HMAC) plus ONE pure
+`route(delivery) → {who, what}` fn — who ∈ resource / alias / run / unhandled,
+what ∈ `run` / `signal-run` / `refresh` / `ignore`. No `subscribe` = manual
+registration — the host logs the callback URL to paste (saperly).
 
 Identity is guarded by the lock: an endpoint id defaults to `request.path`
 (trailing slashes stripped; declare `endpoint:` only when the native path is
 transport plumbing or empty), and `connectors/ids.lock.json` commits every
 published id — `deno task ids:check [--update]` fails on drift, so a vendor
-route move under a derived identity breaks CI instead of renaming silently. The LOCAL host
-loop: `deno task engine:run` persists provisions/releases in a Deno KV store at
-`.output/local.db` (its default ownership window; `--resources <file>` swaps in
-a fixture window), and `deno task webhook simulate|listen` signs / verifies /
-routes deliveries per the compiled descriptors (tunnels — cloudflared /
-tailscale / none — live in scripts only; the engine never listens).
+route move under a derived identity breaks CI instead of renaming silently. The
+LOCAL host loop: `deno task engine:run` persists provisions/releases in a Deno
+KV store at `.output/local.db` (its default ownership window;
+`--resources <file>` swaps in a fixture window), and
+`deno task webhook simulate|listen` signs / verifies / routes deliveries per the
+compiled descriptors (tunnels — cloudflared / tailscale / none — live in scripts
+only; the engine never listens).
 
 ## Configuration
 
@@ -324,7 +326,7 @@ Why tag-triggered, why a GitHub Release:
 | `deno task webhook listen <provider> [--port] [--tunnel cloudflared\|tailscale\|none] [--execute]`             | serve the ingress route locally for REAL deliveries (tunnels are scripts-only)                                                                                    |
 | `deno task ids:check [--update]`                                                                               | identity guard: compiled ids vs `connectors/ids.lock.json`                                                                                                        |
 | `deno task record <id> <scenario> [--body] [--query-params] [--path-params]`                                   | fixture recorder: live call, {req,res} captured (headers dropped), written to fixtures/                                                                           |
-| `deno task test` / `test:live`                                                                                 | replay tests (zero network) / live tests, auto-skipped without `<NAME>_CREDENTIALS_<FIELD>`                                                                                   |
+| `deno task test` / `test:live`                                                                                 | replay tests (zero network) / live tests, auto-skipped without `<NAME>_CREDENTIALS_<FIELD>`                                                                       |
 | `deno task check` / `lint` / `version:check`                                                                   | hygiene + contract guard                                                                                                                                          |
 
 ## Authoring guide

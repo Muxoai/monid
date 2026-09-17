@@ -52,4 +52,5 @@ Hosts and local tooling implement it; the engine itself only consumes
 
 #### Scenario: monid-services plugs in
 - **WHEN** a host already implements ResourceReader
-- **THEN** implementing the four write methods completes the store
+- **THEN** implementing `provision`, `refresh`, `release`, `get`, and
+  `list` completes the store

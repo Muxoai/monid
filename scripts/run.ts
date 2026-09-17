@@ -22,7 +22,7 @@ import {
 } from "@shared/core";
 import { directTransport, Engine } from "@monid/connector-engine";
 import { compileToOutput } from "./lib.ts";
-import { KvResourceStore } from "./store/kv.ts";
+import { admitInto, KvResourceStore, persistEffects } from "./store/kv.ts";
 
 function parseJson(flag: string, raw: string): Json {
     try {
@@ -104,6 +104,7 @@ const fixtureRows: OwnedResource[] = options.resources !== undefined
     : [];
 
 const unit = sealUnit(bundle, endpointId);
+const log = (line: string) => console.error(`[engine:run] ${line}`);
 const engine = new Engine({
     transport: directTransport(),
     resources: store ?? {
@@ -116,67 +117,16 @@ const engine = new Engine({
                 ),
             ),
     },
+    // HOST ORDERING (v1): run() hands ensure's seeds here BEFORE start
+    // executes — a mid-run crash never orphans an upstream resource
+    ...(store ? { admit: admitInto(store, log) } : {}),
     scopeKey: options.scopeKey ?? "local",
 });
 const loaded = await engine.load(unit);
-
-// HOST ORDERING (v1): run ensure() as its own pre-start step and PERSIST
-// its seeds BEFORE the run — a mid-run crash never orphans an upstream
-// resource. run()'s own inline ensure then sees the persisted rows and
-// converges to [] (ensure fns are idempotent against the window).
-if (store) {
-    const seeds = await loaded.ensure(input);
-    for (const seed of seeds) {
-        await store.provision({
-            resource: seed.resource,
-            externalId: seed.externalId,
-            data: seed.data,
-        });
-        console.error(
-            `[engine:run] ensure provisioned ${seed.resource} ` +
-                `"${seed.identifier ?? seed.externalId}" — persisted`,
-        );
-    }
-}
 const result = await loaded.run(input);
 
 // settle EFFECTS → the store (the host's persistence work-orders)
-if (store && result.resources) {
-    for (const seed of result.resources.provisions ?? []) {
-        await store.provision({
-            resource: seed.resource,
-            externalId: seed.externalId,
-            data: seed.data,
-        });
-        console.error(
-            `[engine:run] provisioned ${seed.resource} ` +
-                `"${seed.identifier ?? seed.externalId}" — persisted` +
-                (seed.observedUsage !== undefined
-                    ? ` (observed usage: ${JSON.stringify(seed.observedUsage)})`
-                    : ""),
-        );
-    }
-    for (const target of result.resources.releases ?? []) {
-        await store.release(target.resource, target.externalId);
-        console.error(
-            `[engine:run] released ${target.resource} ` +
-                `"${target.externalId}" — left the ownership window`,
-        );
-    }
-    for (const target of result.resources.refreshes ?? []) {
-        console.error(
-            `[engine:run] refresh marked for ${target.resource} ` +
-                `"${target.externalId}" — a host loop runs the resource ` +
-                `doc's lifecycle.refresh (or: deno task webhook simulate)`,
-        );
-    }
-    for (const target of result.resources.reconciles ?? []) {
-        console.error(
-            `[engine:run] usage reconcile marked for ${target.resource} ` +
-                `"${target.externalId}"`,
-        );
-    }
-}
+if (store) await persistEffects(store, result.resources, log);
 store?.close();
 
 console.log(JSON.stringify(result, null, 2));

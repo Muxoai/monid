@@ -1,17 +1,23 @@
 # Tasks: add-resource-lifecycle-saperly
 
+> AMENDED by `refine-resource-model` (D38–D47): entries below are stated
+> in the FINAL vocabulary where the refine reshaped a surface (billing →
+> usage rate card, ops.check → lifecycle.verify, ResourceRow →
+> OwnedResource, externals → views, accrue → the estimate re-run).
+
 ## 1. Core schema — new resource family
 
-- [x] 1.1 `shared/core/schema/resource/billing.ts` — `zResourceBilling`
-      (period w/ anchor, rent, variable w/ price card + holdCadenceMs +
-      buffer + getActualCost carrier) + outcome schema
-      `{consumes, vendorConsumes?}` + window shape.
-- [x] 1.2 `shared/core/schema/resource/ops.ts` — op fn carriers + outcome
-      schemas (check / release / refresh / external read) + shared op ctx
-      (`{target, row, [window|args]}`).
+- [x] 1.1 `shared/core/schema/resource/usage.ts` — `zResourceUsage`
+      (one period w/ anchor + fixed/estimated lines) + `reconcileUsage`
+      entries (`everyMs`, cumulative `get` → `{consumes,
+      vendorConsumes?}`) + window shape.
+- [x] 1.2 `shared/core/schema/resource/ops.ts` — lifecycle fn carriers +
+      outcome schemas (verify / release / refresh / view read) + shared
+      op ctx (`{resource, [window|args]}`).
 - [x] 1.3 `shared/core/schema/resource/def.ts` + `define.ts` + `typed.ts` —
       `zResourceDef`, `defineResource` (generic over the `data` schema so
-      ops/seeds are row-typed), ids (`zResourceId = <provider>/<name>`).
+      ops/seeds are instance-typed), ids (`zResourceId =
+      <provider>/<slug>`, authored `slug`).
 - [x] 1.4 `shared/core/schema/resource/doc.ts` — `zResourceDoc` +
       `resourceFnKeysOf`.
 - [x] 1.5 `shared/core/schema/sections/resource-binding.ts` —
@@ -27,10 +33,10 @@
 
 ## 2. Core schema — modifications
 
-- [x] 2.1 `sections/usage.ts` — `accrue {intervalMs, counts, buffer?}` +
-      `hooks/accrue.ts` contract.
+- [x] 2.1 `sections/usage.ts` — `updateEstimateEveryMs` +
+      `zEstimateData.elapsedMs?` (the estimate IS the accrual).
 - [x] 2.2 `hooks/lifecycle.ts` — ctx `run: {runId}`; `LifecycleUtils.sleep`
-      + `.resources` + (resource fns) `.external`; `HttpResult.headers`;
+      + `.resources`; `HttpResult.headers`;
       stop outcome union (`void | Completed | UNRESOLVED`).
 - [x] 2.3 `run/result.ts` — `RunCompleted.resources`, `zRunStopResult`.
       (`RunStartResult.ensured` became the dedicated `ensure()` method —
@@ -50,24 +56,24 @@
       rules, seed/ensure placement, input-superset checks vs `inputs`,
       dead-binding lint).
 - [x] 3.3 Billing coherence (variable ⇒ rent + release; cadence floor;
-      accrue ⇒ poll; accrue keys ⊆ metered keys).
+      updateEstimateEveryMs ⇒ poll + metered).
 - [x] 3.4 `config.yml` facts + `scripts/version-check.ts` awareness;
       ENGINE_VERSION 0.1.0 → 0.2.0.
 
 ## 4. Engine
 
-- [x] 4.1 `interfaces/mod.ts` — `ResourceReader`, `ResourceRow`, `RunCtx`,
-      `LoadedResource`, result re-exports.
+- [x] 4.1 `interfaces/mod.ts` — `ResourceReader`, `OwnedResource`,
+      `RunnableResource`, `IResourceStore`, result re-exports.
 - [x] 4.2 Capability gating in `fn-utils.ts` (`resources` stub vs real;
-      `sleep`; `external` for resource fns) + `transport.ts` headers
-      passthrough.
-- [x] 4.3 `engine.ts` — derived ownership gate (uniform 404), `ensure`
-      phase (`RunStartResult.ensured`), post-settle derived outputs
-      (`RunCompleted.resources`, PROVISION_CONSTRUCT), `accrued()`,
-      stop-outcome handling, run-identity plumbing (ULID default).
-- [x] 4.4 `loadResource` — link + gate + op runners (check/release/refresh/
-      external/actualCost) with outcome validation + error taxonomy
-      (`RESOURCE_OP_FAILED`).
+      `sleep`) + `transport.ts` headers passthrough.
+- [x] 4.3 `engine.ts` — derived ownership gate (uniform 404), host-driven
+      `ensure()` (seeds to the `admit` port before start), post-settle
+      derived outputs (`RunCompleted.resources`, PROVISION_CONSTRUCT),
+      `accrued(runInput, elapsedMs)`, stop-outcome handling, run-identity
+      plumbing (UUID; one handle per `run()` loop).
+- [x] 4.4 `loadResource` — link + gate + op runners (verify/release/
+      refresh/reconcileUsage/view) with outcome validation + error
+      taxonomy (`RESOURCE_OP_FAILED`).
 - [x] 4.5 `errors.ts` — the four new codes; engine unit tests for every
       phase (gate hit/miss, ensure, seeds, accrued, stop outcomes,
       headers, reader gating).
@@ -77,7 +83,7 @@
 - [x] 5.1 Fixture schema: top-level `resources` seeds + `res.headers`;
       fake ResourceReader in replay; instant sleep already covers
       `utils.sleep`.
-- [x] 5.2 `testResource(id)` + op/actualCost/external fixture runners
+- [x] 5.2 `loadResource` test wiring + op/reconcile/view fixture runners
       (three window shapes).
 - [x] 5.3 Webhook pure-fn test helpers.
 
@@ -86,15 +92,15 @@
 - [x] 6.1 `connectors/saperly/provider.ts` (auth, credits, deepOmit
       projections, `number-events` webhook) + `schema/` (bodies + readers).
 - [x] 6.2 `resources/phone-number/resource.ts` + fixtures + tests
-      (check active/released/gone, release idempotency + connection
-      delete, refresh override/carry-forward, external persona).
+      (verify active/released/gone, release idempotency + connection
+      delete, refresh override/carry-forward, live persona view).
 - [x] 6.3 Numbers: `provision-numbers` (saga + seed; fixtures: happy,
       PriceChanged retry, degraded bind, malformed quote, purchase-fail
       orphan hygiene), `release-numbers/{id}`, `list-numbers`,
       `get-numbers/{id}`, `update-numbers/{id}` (repair branch),
       `sync-numbers`.
 - [x] 6.4 Catalogs: `list-voices`, `list-languages`.
-- [x] 6.5 Calls: `place-calls` (start/poll/stop + accrue; fixtures:
+- [x] 6.5 Calls: `place-calls` (start/poll/stop + elapsed estimate; fixtures:
       born-terminal, running→settled, grace exhaustion, stop-settled,
       stop-UNRESOLVED), `inbound-calls` (adopt; shared poll/stop),
       `list-calls`, `get-calls/{id}`, `calls/{id}/transcript`,
@@ -109,7 +115,7 @@
 - [x] 7.1 `scripts/run.ts --resources <file>`; `scripts/catalog.ts`
       resources listing + inspect.
 - [x] 7.2 `DEVELOPMENT.md` chapters (resources, billing, bindings,
-      webhooks, accrue) + `README.md` connector table row.
+      webhooks, mid-run estimates) + `README.md` connector table row.
 - [x] 7.3 Full verification: `deno task check && deno task test`;
       byte-identical recompile of every pre-existing connector;
       `deno task version:check`; `openspec validate --all` if available.

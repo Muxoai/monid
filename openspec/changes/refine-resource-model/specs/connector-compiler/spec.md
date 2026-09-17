@@ -12,7 +12,7 @@ reconciler and every reconciler names an estimated line; `everyMs ≥
 model has metered lines; purpose-keyed binding coherence (≤1 provisions;
 `key` present where required; dead-key lint per gated entry; `as`
 uniqueness; input ⊇ slot required props per purpose); resource `slug`
-=== folder; endpoint `endpoint:` present.
+=== folder (endpoint `endpoint:` stays optional — `?? request.path`).
 
 #### Scenario: Reconciler for a fixed line
 - **WHEN** `reconcileUsage.rent` names a FIXED line

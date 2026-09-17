@@ -5,10 +5,11 @@
 ### Requirement: Local resource store
 The repo SHALL ship a Deno KV adaptor of `IResourceStore`
 (`.output/local.db`; `--unstable-kv` wired into deno.json tasks).
-`engine:run` SHALL serve the ownership window from the store and apply
-provision seeds and settle effects (releases/refreshes) back through it;
-`--resources file.json` remains a one-off override that bypasses the
-store.
+`engine:run` SHALL serve the ownership window from the store, hand
+ensure's seeds to it via the engine's `EngineCtx.admit` port BEFORE the
+run starts, and apply settle effects (provisions/releases, with
+refresh/reconcile marks logged) back through it; `--resources file.json`
+remains a one-off override that bypasses the store.
 
 #### Scenario: Provision persists locally
 - **WHEN** `engine:run saperly#provision-numbers` succeeds locally

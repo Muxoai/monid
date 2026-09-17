@@ -126,6 +126,13 @@ export interface EngineCtx {
      *  absent there fails NO_RESOURCE_READER, fail-closed. Unbound docs
      *  never touch it. */
     resources?: ResourceReader;
+    /** The seed ADMISSION port: `run()` hands `ensure`'s seeds here
+     *  BEFORE start() executes, so the ownership gate sees them (the
+     *  reader is read-only by design — admission is the host's write).
+     *  Hosts that drive phases themselves call `ensure()` and persist
+     *  on their own; `run()` without this port WARNS loudly when seeds
+     *  surface (they are logged, not persisted — keyed gates may 404). */
+    admit?: (seeds: ProvisionSeed[]) => Promise<void>;
     /** The opaque scope token handed to `ensure` fns as `scope.key` — a
      *  stable name for the calling workspace (hosted: an opaque tenant
      *  hash; local default "local"). Never carries meaning. */

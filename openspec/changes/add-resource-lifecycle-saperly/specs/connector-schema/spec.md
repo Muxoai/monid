@@ -7,14 +7,16 @@ The schema SHALL provide `defineResource` → `zResourceDef`, authored at
 `connectors/<provider>/resources/<name>/resource.ts` with the id
 `<provider>/<name>` inferred from the folder and never authored. The def
 SHALL declare `meta` (zBaseMeta), a `data` row schema (live zod, compiled to
-JSON Schema), optional `inputs` schemas for create/update/release, optional
-`billing`, `ops` (`check` required, `release` required, `refresh` optional),
-optional `externals`, and optional `webhooks`.
+JSON Schema), optional `inputs` schemas for create/update/release, the
+REQUIRED `usage` rate card (+ `reconcileUsage`), `lifecycle` (`verify`
+required, `release` required, `refresh` optional), optional `views`, and
+optional `webhooks`.
 
-#### Scenario: Row typing flows from `data`
+#### Scenario: Instance typing flows from `data`
 - **WHEN** a resource declares a `data` schema
-- **THEN** op ctxs (`data.row`), refresh patches, and CREATES seeds are typed
-  by that schema at author time and validated by the engine at run time
+- **THEN** op ctxs (`data.resource`), refresh patches, and provision seeds
+  are typed by that schema at author time and validated by the engine at
+  run time
 
 ### Requirement: Compiled resource docs are sealed units
 The compiler SHALL emit `zResourceDoc` mirroring `zEndpointDoc`:
@@ -64,24 +66,25 @@ opaque host namespace token) and `utils.{http, request, resources}`.
 - **THEN** the compiler verifies the endpoint's input schema accepts a
   superset of the resource's corresponding `inputs` schema
 
-### Requirement: Externals are named always-live reads
-`zResourceDef.externals` SHALL be a record of `{read, display (default
-false)}`. Reads are effectful, never persisted, and callable from billing
-and op fns via `utils.external(kind, args?)` so the bill and the preview
-share one reader.
+### Requirement: Views are named always-live reads
+`zResourceDef.views` SHALL be a record of `{label?, read}`. Reads are
+effectful, never persisted, and served host-side via
+`RunnableResource.view(kind, instance, args?)` — one reader per kind, no
+second implementation to drift.
 
-#### Scenario: Internal-only live data
-- **WHEN** a kind declares `display: false`
-- **THEN** it is excluded from the host detail surface but remains callable
-  by `getActualCost` and ops
+#### Scenario: One reader per kind
+- **WHEN** a host renders a view and a meter needs the same upstream fact
+- **THEN** both go through the doc's ONE compiled `views.<kind>.read`
 
-### Requirement: Metered runs declare accrual
-`usage.accrue` SHALL be declarable (endpoint ?? provider) as `{intervalMs,
-counts (pure ({elapsedMs, usage:{model}}) → {counts}), buffer?}` and SHALL
-require `lifecycle.poll` to resolve.
+### Requirement: Metered runs declare an estimate cadence
+`usage.updateEstimateEveryMs` SHALL be declarable (endpoint ?? provider);
+the ESTIMATE fn re-runs with `elapsedMs` set as the mid-run accrual
+(`zEstimateData.elapsedMs?`). Declaring it SHALL require a resolvable
+`lifecycle.poll` and a metered model.
 
-#### Scenario: Accrue on a sync endpoint is dead config
-- **WHEN** an endpoint declares `usage.accrue` and no poll resolves
+#### Scenario: A cadence on a sync endpoint is dead config
+- **WHEN** an endpoint declares `usage.updateEstimateEveryMs` and no poll
+  resolves
 - **THEN** compilation fails
 
 ### Requirement: Lifecycle ctx gains run identity and sleep; stop reports
