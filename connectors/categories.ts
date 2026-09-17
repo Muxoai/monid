@@ -106,6 +106,22 @@ export const LEAF_CATEGORIES = defineLeafCategories([
         description: "Google Shopping data: products, prices, and sellers.",
     },
     {
+        id: "ai-search",
+        displayName: "AI Search",
+        description:
+            "AI search engines: Gemini, ChatGPT web search, Google AI Mode.",
+    },
+    {
+        id: "flights",
+        displayName: "Flights",
+        description: "Flight data: fares, schedules, and routes.",
+    },
+    {
+        id: "hotels",
+        displayName: "Hotels",
+        description: "Hotel data: room rates, availability, and guest reviews.",
+    },
+    {
         id: "jobs",
         displayName: "Jobs",
         description: "Job listings and hiring data.",

@@ -1,0 +1,313 @@
+import { assertEquals } from "@std/assert";
+import { fromFileUrl } from "@std/path";
+import type { Json, RunInput } from "@shared/core";
+import {
+    loadFixture,
+    runEndpoint,
+    testBundle,
+    testSealedUnit,
+} from "@shared/testing";
+
+const HERE = fromFileUrl(new URL("./", import.meta.url));
+
+/**
+ * MrScraper's draw per endpoint — the vendor's marketplace catalog
+ * (`pricePerRun`, dumped by v1 on 2026-09-07) corrected by v1's 2026-09-08
+ * drills for the marketplace scrapers, and the playground's variable meter
+ * (`token_usage`) as each happy fixture reports it. The vendor's echo
+ * equals the fold on every happy chain, so no `mismatch` key appears
+ * (zUsage is strict; deep-equality proves it). Written as LITERALS on
+ * purpose (clay D7a): deriving them from each doc's own model would make
+ * this test a tautology. A new endpoint must state its row here.
+ */
+const RATE: Record<
+    string,
+    { input: RunInput; usage: Record<string, unknown> }
+> = {
+    "mrscraper#scrape/html": {
+        input: { body: { url: "https://example.com" } },
+        usage: { credits: { default: 2 }, evidence: { TOKEN: 2 } },
+    },
+    "mrscraper#scrape/markdown": {
+        input: { body: { url: "https://example.com" } },
+        usage: { credits: { default: 2 }, evidence: { TOKEN: 2 } },
+    },
+    "mrscraper#scrape/screenshot": {
+        input: { body: { url: "https://example.com" } },
+        usage: { credits: { default: 3 }, evidence: { TOKEN: 3 } },
+    },
+    "mrscraper#scrape/extract": {
+        input: {
+            body: {
+                url: "https://example.com",
+                prompt: "Extract the page title.",
+            },
+        },
+        usage: { credits: { default: 12 }, evidence: { TOKEN: 12 } },
+    },
+    "mrscraper#scrape/detail": {
+        input: { body: { url: "https://example.com" } },
+        usage: { credits: { default: 32 }, evidence: { TOKEN: 32 } },
+    },
+    "mrscraper#scrape/listing": {
+        input: { body: { url: "https://books.toscrape.com/", maxPages: 2 } },
+        usage: { credits: { default: 45 }, evidence: { TOKEN: 45 } },
+    },
+    "mrscraper#scrape/map": {
+        input: { body: { url: "https://quotes.toscrape.com/", maxPages: 2 } },
+        usage: { credits: { default: 30 }, evidence: { TOKEN: 30 } },
+    },
+    "mrscraper#serp/google": {
+        input: { body: { query: "mrscraper", region: "us" } },
+        usage: { credits: { default: 1 }, evidence: { RESULT: 1 } },
+    },
+    "mrscraper#gemini/ask": {
+        input: { body: { query: "What is MrScraper?" } },
+        usage: { credits: { default: 10 }, evidence: { RESULT: 1 } },
+    },
+    "mrscraper#google/ai-mode": {
+        input: { body: { keyword: "best web scraping api", country: "us" } },
+        usage: { credits: { default: 10 }, evidence: { RESULT: 1 } },
+    },
+    "mrscraper#gpt/web-search": {
+        input: { body: { query: "What is MrScraper?" } },
+        usage: { credits: { default: 25 }, evidence: { RESULT: 1 } },
+    },
+    "mrscraper#google/flights": {
+        input: {
+            body: {
+                origin: "JFK",
+                destination: "SIN",
+                type: "OW",
+                date: "2026-11-20",
+                country: "us",
+            },
+        },
+        usage: { credits: { default: 10 }, evidence: { RESULT: 1 } },
+    },
+    "mrscraper#google/hotel": {
+        input: {
+            body: {
+                url: "https://www.google.com/travel/hotels/entity/ChUI17vV0u_fprYCGgkvbS8wZGQ5MDMQAQ",
+            },
+        },
+        usage: { credits: { default: 10 }, evidence: { RESULT: 1 } },
+    },
+    "mrscraper#tiktok/hashtag": {
+        input: { body: { tag: "lego" } },
+        usage: { credits: { default: 10 }, evidence: { RESULT: 1 } },
+    },
+    "mrscraper#tiktok/video-download": {
+        input: {
+            body: {
+                url: "https://www.tiktok.com/@sgweekender/video/7636779258941066504",
+            },
+        },
+        usage: { credits: { default: 10 }, evidence: { RESULT: 1 } },
+    },
+    "mrscraper#tiktok/video": {
+        input: {
+            body: {
+                url: "https://www.tiktok.com/@mrbeast/video/7670199761282075935",
+            },
+        },
+        usage: { credits: { default: 10 }, evidence: { RESULT: 1 } },
+    },
+    "mrscraper#youtube/comments": {
+        input: { body: { videoId: "HeyIXwZyR8Y" } },
+        usage: { credits: { default: 10 }, evidence: { RESULT: 1 } },
+    },
+    "mrscraper#youtube/video": {
+        input: { body: { url: "https://www.youtube.com/watch?v=HeyIXwZyR8Y" } },
+        usage: { credits: { default: 10 }, evidence: { RESULT: 1 } },
+    },
+};
+
+/** Fixture dir: `endpoints/<v1 id, slashes as dashes>/fixtures/`. */
+const happyFixture = (id: string) =>
+    loadFixture(
+        `${HERE}endpoints/${
+            id.split("#")[1].replaceAll("/", "-")
+        }/fixtures/synthetic-happy.json`,
+    );
+
+const mrscraperIds = async (): Promise<string[]> => {
+    const bundle = await testBundle();
+    return Object.keys(bundle.endpoints)
+        .filter((id) => id.startsWith("mrscraper#"))
+        .sort();
+};
+
+Deno.test("mrscraper: the literal rate table covers exactly the compiled endpoints", async () => {
+    const ids = await mrscraperIds();
+    assertEquals(ids.length, 18);
+    assertEquals(ids, Object.keys(RATE).sort());
+});
+
+Deno.test("mrscraper: every endpoint's happy run settles its published draw and drops the meter", async () => {
+    for (const [id, { input, usage }] of Object.entries(RATE)) {
+        const unit = await testSealedUnit(id);
+        const fixture = await happyFixture(id);
+        const result = await runEndpoint({
+            unit,
+            input,
+            mode: "replay",
+            fixture,
+        });
+        assertEquals(result.httpStatus, 200, id);
+        assertEquals(result.isProviderError, false, id);
+        assertEquals(result.usage, usage, id);
+        const output = result.output as Record<string, Json>;
+        assertEquals("tokenUsage" in output, false, id);
+        assertEquals("token_usage" in output, false, id);
+    }
+});
+
+Deno.test("mrscraper: empty results and soft failures record zero whatever the vendor reports (design D4)", async () => {
+    const id = "mrscraper#serp/google";
+    const unit = await testSealedUnit(id);
+    const cases: [string, Json][] = [
+        ["no data key", { success: true, message: "ok", tokenUsage: 1 }],
+        ["null data", { success: true, data: null, tokenUsage: 1 }],
+        ["empty object", { success: true, data: {}, tokenUsage: 1 }],
+        ["empty array", { success: true, data: [], tokenUsage: 1 }],
+        ["success false", { success: false, data: { x: 1 }, tokenUsage: 1 }],
+        ["soft failure", {
+            success: true,
+            data: { status: "FAIL" },
+            tokenUsage: 1,
+        }],
+    ];
+    for (const [label, body] of cases) {
+        const fixture = await happyFixture(id);
+        fixture.calls[0].res.body = body;
+        const result = await runEndpoint({
+            unit,
+            input: RATE[id].input,
+            mode: "replay",
+            fixture,
+        });
+        assertEquals(result.httpStatus, 200, label);
+        assertEquals(
+            result.usage,
+            { credits: {}, evidence: { RESULT: 0 } },
+            label,
+        );
+    }
+});
+
+Deno.test("mrscraper: a marketplace run billed above the card settles the vendor's count with a cross-check", async () => {
+    const id = "mrscraper#serp/google";
+    const unit = await testSealedUnit(id);
+    const fixture = await happyFixture(id);
+    (fixture.calls[0].res.body as { tokenUsage: number }).tokenUsage = 3;
+    const result = await runEndpoint({
+        unit,
+        input: RATE[id].input,
+        mode: "replay",
+        fixture,
+    });
+    assertEquals(result.usage, {
+        credits: { default: 3 },
+        evidence: { RESULT: 1 },
+        mismatch: { derived: { default: 1 } },
+    });
+});
+
+Deno.test("mrscraper: an envelope without the meter settles the card", async () => {
+    const id = "mrscraper#serp/google";
+    const unit = await testSealedUnit(id);
+    const fixture = await happyFixture(id);
+    delete (fixture.calls[0].res.body as Record<string, Json>).tokenUsage;
+    const result = await runEndpoint({
+        unit,
+        input: RATE[id].input,
+        mode: "replay",
+        fixture,
+    });
+    assertEquals(result.usage, {
+        credits: { default: 1 },
+        evidence: { RESULT: 1 },
+    });
+});
+
+Deno.test("mrscraper: usage fn provenance — the marketplace majority inherits, the playground overrides", async () => {
+    const bundle = await testBundle();
+    const ids = await mrscraperIds();
+    const playground = ids.filter((id) => id.startsWith("mrscraper#scrape/"));
+    const marketplace = ids.filter((id) => !id.startsWith("mrscraper#scrape/"));
+    assertEquals(playground.length, 7);
+    const serp = bundle.endpoints["mrscraper#serp/google"];
+    for (const id of marketplace) {
+        const doc = bundle.endpoints[id];
+        // one Bearer inject, one envelope consolidate, one generic
+        // evidence, one unwrap — all the provider's
+        assertEquals(doc.auth.inject.$fn.key, serp.auth.inject.$fn.key, id);
+        assertEquals(
+            doc.usage.consolidate?.$fn.key,
+            serp.usage.consolidate?.$fn.key,
+            id,
+        );
+        assertEquals(
+            doc.usage.evidence.$fn.key,
+            serp.usage.evidence.$fn.key,
+            id,
+        );
+        assertEquals(
+            doc.output.fromResponse?.$fn.key,
+            serp.output.fromResponse?.$fn.key,
+            id,
+        );
+        assertEquals(
+            doc.request.url.startsWith("https://sync.scraper.mrscraper.com/"),
+            true,
+            id,
+        );
+    }
+    // the SERP is the one marketplace doc with a toRequest (format: json)
+    assertEquals(
+        marketplace.filter((id) =>
+            bundle.endpoints[id].input.toRequest !== undefined
+        ),
+        ["mrscraper#serp/google"],
+    );
+    const html = bundle.endpoints["mrscraper#scrape/html"];
+    for (const id of playground) {
+        const doc = bundle.endpoints[id];
+        // the playground's own host, header auth, meter and strip —
+        // interned across the seven (same text)
+        assertEquals(doc.request.url, "https://api.mrscraper.com/", id);
+        assertEquals(doc.auth.inject.$fn.key, html.auth.inject.$fn.key, id);
+        assertEquals(
+            doc.auth.inject.$fn.key !== serp.auth.inject.$fn.key,
+            true,
+            id,
+        );
+        assertEquals(
+            doc.usage.consolidate?.$fn.key,
+            html.usage.consolidate?.$fn.key,
+            id,
+        );
+        assertEquals(
+            doc.usage.evidence.$fn.key,
+            html.usage.evidence.$fn.key,
+            id,
+        );
+        assertEquals(
+            doc.output.fromResponse?.$fn.key,
+            html.output.fromResponse?.$fn.key,
+            id,
+        );
+        assertEquals(doc.input.toRequest !== undefined, true, id);
+        assertEquals(doc.timeouts, { requestMs: 330_000, runMs: 330_000 }, id);
+    }
+    // every playground preset states its own flags: seven toRequest texts
+    assertEquals(
+        new Set(
+            playground.map((id) =>
+                bundle.endpoints[id].input.toRequest?.$fn.key
+            ),
+        ).size,
+        7,
+    );
+});
