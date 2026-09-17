@@ -19,6 +19,12 @@ export default defineEndpoint({
             "because source context is not guaranteed to identify " +
             "the organization raising funds.",
         categories: ["company-enrichment", "funding-data"],
+        notes: [
+            "This endpoint's credit tier is v1's BEST READING of the " +
+            "vendor's unnamed '(partial)' tier entry - unconfirmed by a " +
+            "balance drill; confirm by balance differencing before " +
+            "relying on the exact rate.",
+        ],
     },
     request: { method: "GET", path: "/search/fundraising" },
     input: {

@@ -25,6 +25,8 @@ export default defineEndpoint({
             "product shots to motion, character animation, photo-to-clip " +
             "social content, keyframe-driven transitions.",
         categories: ["video-generation"],
+        // v1 per-model docs page (restored, reconcile 2026-09-16)
+        docsUrl: "https://kling.ai/document-api/api/video/2-6/text-to-video",
         /** CROSS-field rules the compiled JSON Schema cannot express, which
          *  Kling enforces itself with a free rejection (design D9). */
         notes: [

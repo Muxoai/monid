@@ -21,6 +21,10 @@ export default defineEndpoint({
             "Pass at least one of `id` or `q`; `id` takes priority " +
             "when several are given. A request with none is rejected " +
             "before the wire.",
+            "This endpoint's credit tier is v1's BEST READING of the " +
+            "vendor's unnamed '(partial)' tier entry - unconfirmed by a " +
+            "balance drill; confirm by balance differencing before " +
+            "relying on the exact rate.",
         ],
     },
     request: { method: "GET", path: "/search/events" },

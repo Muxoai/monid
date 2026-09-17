@@ -26,6 +26,9 @@ export default defineEndpoint({
             "720P/1080P. Suited for: consistent-character series, dialogue " +
             "scenes, virtual presenters, storyboard-to-video.",
         categories: ["video-generation"],
+        // v1 per-family docs page (restored, reconcile 2026-09-16)
+        docsUrl:
+            "https://www.alibabacloud.com/help/en/model-studio/wan-video-to-video-api-reference",
         /** CROSS-field rules the compiled JSON Schema cannot express (design
          *  D9); DashScope enforces each with a free rejection. */
         notes: [
@@ -37,6 +40,8 @@ export default defineEndpoint({
             "Billed seconds = output seconds + reference-video input " +
             "seconds, the input side capped at 5 s; the estimate holds " +
             "the requested OUTPUT seconds only.",
+            "Generation typically takes 1-5 minutes; long or complex " +
+            "requests can take 15+ minutes (v1 note, carried).",
         ],
     },
     /** PUBLIC identity: v1's published id (design D1). */

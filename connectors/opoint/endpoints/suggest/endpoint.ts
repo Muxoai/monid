@@ -25,6 +25,11 @@ export default defineEndpoint({
             "in /search-advanced.",
         docsUrl: "https://api-docs.opoint.com/references/suggestion-server",
         categories: ["news-search"],
+        notes: [
+            "Resolves PUBLIC sites only (access_group 1) - sites Opoint " +
+            "adds for Monid under agreement live on a separate access " +
+            "bit and will not appear until that changes.",
+        ],
     },
     /** PUBLIC identity (design D22): the native path carries derived
      *  {placeholders}, which the identity grammar forbids. */

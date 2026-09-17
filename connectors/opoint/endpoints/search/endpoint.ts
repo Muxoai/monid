@@ -28,6 +28,10 @@ export default defineEndpoint({
             "re-read known articles with /search-by-ids.",
         docsUrl: "https://api-docs.opoint.com/references/search-request",
         categories: ["news-search"],
+        notes: [
+            "An empty result set still consumes one Search API call - " +
+            "the vendor's band counts the request regardless of hits.",
+        ],
     },
     /** PUBLIC identity (design D22): all four searches relay to the ONE
      *  upstream `POST /search/`, so the vendor path is transport plumbing

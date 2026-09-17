@@ -23,6 +23,10 @@ export default defineEndpoint({
             "picking which ids to fetch with a snippet via /search-by-ids.",
         docsUrl: "https://api-docs.opoint.com/references/search-request",
         categories: ["news-search"],
+        notes: [
+            "An empty result set still consumes one Search API call - " +
+            "the vendor's band counts the request regardless of hits.",
+        ],
     },
     /** PUBLIC identity (design D22): shares the upstream `POST /search/`. */
     endpoint: "/search-headlines",
