@@ -49,9 +49,19 @@ export default defineProvider({
     // request 60s, run 60s — sync provider, no poll loop
     timeouts: { requestMs: 60_000, runMs: 60_000 },
     usage: {
-        /** THE credit system (design D26) — Fundable's own meter, declared
-         *  ONCE for every endpoint (single pool ⇒ id `default`). */
-        credits: { default: { label: "Fundable credits" } },
+        /** THE credit systems (design D26). `default` is Fundable's own
+         *  credit meter ($0.06/credit contract — rows and lookups draw 1).
+         *  `search` is the SEPARATE contract line for the three fuzzy
+         *  resolvers (reconcile 2026-09-16): the partner invoices searches
+         *  at a $0.01 FLAT per call while the API's credit stamp reads
+         *  0.1 — no single per-credit price satisfies both ($0.06 × 0.1 =
+         *  $0.006 ≠ $0.01), so the searches drain their own pool (1 call
+         *  = one $0.01 broker-card unit) and treat the 0.1-credit stamp
+         *  as informational. */
+        credits: {
+            default: { label: "Fundable credits" },
+            search: { label: "Fundable search calls" },
+        },
         /** The vendor's OWN claim (design D27): pluck `meta.credits_used`
          *  (read + strip, one motion). Entry OMITTED when the field is
          *  absent (never `?? 0` — an absent meter must fall back to the

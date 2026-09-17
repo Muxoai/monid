@@ -38,7 +38,11 @@ export default defineEndpoint({
         /** COMPOSITE, one component PER SECTION (design D25 addendum):
          *  akta prices each section DIFFERENTLY (vendor pricing table,
          *  verified on both the CLI and MCP surfaces — firmographic 2cr,
-         *  trust_signal 0.5cr, … mna_and_investment 5cr), so a uniform
+         *  trust_signal 0.5cr, … mna_and_investment 5cr; this table
+         *  DELIBERATELY replaces v1's uniform 2.5cr/section, which was a
+         *  representative price only — the live 2026-09-16 reconcile run
+         *  settled a 1-section firmographic call at exactly the table's
+         *  2cr claim), so a uniform
          *  "sections" count cannot price the run. Component ids are the
          *  VENDOR'S OWN section names verbatim — the counts vector maps
          *  1:1 onto akta's pricing-table rows and the per-section credit

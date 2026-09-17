@@ -38,10 +38,14 @@ export default defineProvider({
          *  raw QUANTITIES the evidence fns already read, so the claim is
          *  always empty (the derived fold settles) and this fn's whole
          *  job is the strip: billing facts never ride the payload
-         *  (design D27). */
+         *  (design D27). SCOPED to `$.meta.usage` (reconcile 2026-09-16):
+         *  the previous deep `omit(["usage"])` walked EVERY level and
+         *  could silently delete a `usage` key inside scraped/extracted
+         *  user content (/extract json output, full-content pages). Only
+         *  the vendor's own receipt is billing metadata. */
         consolidate: ({ data, utils }) => ({
             credits: {},
-            output: utils.json.omit(data.output, ["usage"]),
+            output: utils.json.pluck(data.output, "$.meta.usage").rest,
         }),
     },
 });
