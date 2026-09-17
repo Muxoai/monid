@@ -24,7 +24,7 @@ export default defineEndpoint({
         categories: ["video-generation"],
         // v1 per-model docs page (restored, reconcile 2026-09-16)
         docsUrl:
-            "https://kling.ai/document-api/api/video/3-0-turbo/text-to-video",
+            "https://kling.ai/document-api/api/video/3-0-turbo/image-to-video",
         notes: [
             "Turbo always generates native audio and is priced as such — " +
             "there is no audio switch.",

@@ -46,6 +46,10 @@ export default defineEndpoint({
          *  JSON-Schema defaults never materialize inside `anyOf` — and an
          *  explicit caller value wins the merge. */
         toRequest: ({ data, utils }) => {
+            // body IS schema-required on this doc, but the closed-term
+            // envelope types `data.input.body` as `Json | undefined`
+            // regardless — the ?? {} is a type guard, not dead code
+            // (removing it fails `deno check`, TS2345; PR review)
             const body = data.input.body ?? {};
             const dataset = utils.json.optionalGet(body, "$.dataset");
             return {

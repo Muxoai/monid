@@ -1,4 +1,5 @@
 import { defineEndpoint, UsageModelKind } from "@shared/core";
+import { zModel } from "../../schema/common.ts";
 import { zTextTo3dBody } from "./schema/inputs.ts";
 
 /**
@@ -14,7 +15,7 @@ export default defineEndpoint({
             "Generate a production 3D mesh from a text prompt (async; polled to completion).",
         description:
             "Generate a production 3D mesh from a text prompt. Choose a " +
-            "model: 'sculptor' (default) for game-ready meshes and fast " +
+            "model (required): 'sculptor' for game-ready meshes and fast " +
             "iteration, or 'atelier' for premium fidelity with PBR " +
             "materials and detailed textures. Tune polygon count via " +
             "params.faces (200000 / 500000 / 1000000 / 2000000, default " +
@@ -36,7 +37,20 @@ export default defineEndpoint({
     // so, so the engine gates it pre-flight instead of the vendor gating it
     // post-flight. Mirror stays optional (D25); the binding states the
     // requirement.
-    input: { schema: { body: zTextTo3dBody.required({ model: true }) } },
+    input: {
+        schema: {
+            body: zTextTo3dBody.required({ model: true }).extend({
+                // the shared zModel prose says "Defaults to sculptor
+                // server-side" — untrue HERE, so the binding overrides
+                // the describe along with the optionality (PR review)
+                model: zModel.describe(
+                    "Required. sculptor: game-ready meshes, fast " +
+                        "iteration. atelier: premium fidelity with PBR " +
+                        "materials and detailed textures.",
+                ),
+            }),
+        },
+    },
     // ASYNC generation: a durable poll loop needs a large WHOLE-RUN budget
     // while the submit itself stays a quick kickoff. The vendor documents
     // 30 s–2 min single-image, 1–4 min multi-view and a 20-min practical
