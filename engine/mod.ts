@@ -29,11 +29,19 @@ export {
     moneyUtil,
 } from "./fn-utils.ts";
 export { buildRequest, substituteUrl, validateInput } from "./request.ts";
-export { applyAuth, envVarFor } from "./auth.ts";
+export {
+    applyAuth,
+    credentialEnvVarFor,
+    credentialEnvVarsFor,
+    credentialFieldsOf,
+    envVarFor,
+} from "./auth.ts";
 export {
     directTransport,
+    envCredentialsPresent,
     envParamsResolver,
     relayTransport,
+    resolveCredentialEnv,
     sniffDecode,
 } from "./transport.ts";
 export {

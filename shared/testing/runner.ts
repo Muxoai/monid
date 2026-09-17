@@ -1,6 +1,7 @@
 import { fromFileUrl, join } from "@std/path";
 import {
     type Bundle,
+    type Json,
     loadCategoryRegistry,
     loadConnectorDefs,
     type OwnedResource,
@@ -12,9 +13,11 @@ import {
     type Usage,
 } from "@shared/core";
 import {
+    credentialFieldsOf,
     directTransport,
     Engine,
     ENGINE_VERSION,
+    envCredentialsPresent,
     envParamsResolver,
     type ResourceReader,
     type RunCompleted,
@@ -107,7 +110,16 @@ function testTransport(opts: {
     fixture?: Fixture;
     sink?: RecordedCall[];
     bindings?: Record<string, string>;
+    /** The doc's compiled auth.credentials schema. */
+    credentials: Record<string, Json>;
 }) {
+    // the test key satisfies whatever credential SHAPE the doc declares
+    // (default `{apiKey}`, or a provider's own — contactout names its two
+    // keys), so replay never depends on env
+    const testParams = Object.fromEntries(
+        credentialFieldsOf(opts.credentials)
+            .map((field) => [field, "test-key"]),
+    );
     switch (opts.mode) {
         case "replay": {
             if (!opts.fixture) {
@@ -115,7 +127,7 @@ function testTransport(opts: {
                 // calls happen — strictly stronger than a placeholder
                 // chain (which an accidental call could silently consume)
                 return directTransport({
-                    params: () => Promise.resolve({ apiKey: "test-key" }),
+                    params: () => Promise.resolve(testParams),
                     fetch: (input, init) =>
                         Promise.reject(
                             new Error(
@@ -130,7 +142,7 @@ function testTransport(opts: {
                 });
             }
             return directTransport({
-                params: () => Promise.resolve({ apiKey: "test-key" }),
+                params: () => Promise.resolve(testParams),
                 fetch: replayFetch(opts.fixture, opts.bindings ?? {}),
             });
         }
@@ -164,6 +176,7 @@ export async function loadEndpoint(
                 "request.url": requestUrl,
                 "request.origin": new URL(requestUrl).origin,
             },
+            credentials: opts.unit.doc.auth.credentials,
         }),
         // replay: skip real pollAfterMs sleeps — async fixtures replay
         // instantly (also neuters lifecycle utils.sleep waits).
@@ -207,6 +220,7 @@ export async function loadResource(
                 "request.url": requestUrl,
                 "request.origin": new URL(requestUrl).origin,
             },
+            credentials: opts.unit.doc.auth.credentials,
         }),
         ...(opts.mode === "replay" ? { sleep: () => Promise.resolve() } : {}),
     });
@@ -236,8 +250,43 @@ export async function estimateEndpoint(
     return loaded.estimate(input);
 }
 
-/** Gate for live tests: `ignore: liveSkip("exa")`. */
-export function liveSkip(providerSlug: string): boolean {
-    const envVar = `${providerSlug.toUpperCase().replaceAll("-", "_")}_API_KEY`;
-    return !Deno.env.get(envVar);
+/**
+ * The PASSING half of a schema gate: `input` clears input validation.
+ *
+ * A gate test that only asserts rejections cannot detect a gate that is too
+ * WIDE — every near-valid bad input fails, and so would every good one. This
+ * asserts the complement: the run may fail afterwards for any other reason
+ * (a replay URL mismatch is the usual one, since proving a variant reaches
+ * the wire would need its own fixture), but it must not fail with
+ * INVALID_INPUT.
+ */
+export async function assertInputAccepted(
+    opts: RunEndpointOptions,
+): Promise<void> {
+    try {
+        await runEndpoint(opts);
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (message.includes("INVALID_INPUT")) {
+            throw new Error(
+                `the schema gate REJECTED an input that must pass ` +
+                    `(${JSON.stringify(opts.input)}): ${message}`,
+            );
+        }
+        // any other failure means validation let the input through, which
+        // is the whole claim
+    }
+}
+
+/**
+ * Gate for live tests: `ignore: liveSkip("exa")`. Open only when EVERY
+ * credential field the provider declares is set — a multi-key provider
+ * names its fields: `liveSkip("contactout", ["workApiKey", "personalApiKey"])`.
+ * The env reading itself lives behind the engine's transport boundary.
+ */
+export function liveSkip(
+    providerSlug: string,
+    fields?: readonly string[],
+): boolean {
+    return !envCredentialsPresent(providerSlug, fields);
 }

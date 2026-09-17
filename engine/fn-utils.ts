@@ -482,7 +482,14 @@ export function makeResourcesWindow(
             try {
                 return await reader.owned(parsed.data);
             } catch (error) {
-                if (error instanceof EngineError) throw error;
+                // NORMALIZE host-reader failures to the retriable code —
+                // a foreign EngineError code from a reader (e.g. a host
+                // reusing INVALID_INPUT) must not mark a transient read
+                // non-retriable
+                if (
+                    error instanceof EngineError &&
+                    error.code === EngineErrorCode.RESOURCE_OP_FAILED
+                ) throw error;
                 throw new EngineError(
                     EngineErrorCode.RESOURCE_OP_FAILED,
                     `${label}: ResourceReader.owned failed: ${error}`,

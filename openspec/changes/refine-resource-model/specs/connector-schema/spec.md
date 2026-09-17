@@ -81,7 +81,8 @@ Provider and resource defs SHALL declare
 (no `account` wrapper — scope is positional). `route` SHALL be ONE pure
 fn returning `{ who, what }` with the existing correlation and action
 vocabularies. `verify.payload` SHALL be a template string containing
-`${rawBody}` (any composition with `${timestamp}` and literals).
+`${rawBody}` AND `${timestamp}` (any composition with literal glue) —
+freshness must be BOUND to the HMAC, or `toleranceMs` is replayable.
 
 #### Scenario: Route answers who and what together
 - **WHEN** a verified delivery is routed

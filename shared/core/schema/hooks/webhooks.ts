@@ -37,14 +37,23 @@ export const zWebhookVerify = z.strictObject({
     signatureHeader: z.string().min(1),
     timestampHeader: z.string().min(1),
     /** The signed payload TEMPLATE (design D45): `${rawBody}` (the EXACT
-     *  raw bytes — required: a signature that doesn't cover the body
-     *  verifies nothing) and optionally `${timestamp}` (the timestamp
-     *  header's value), joined with any literal glue the vendor
-     *  specifies (saperly: "${timestamp}.${rawBody}"). */
+     *  raw bytes — a signature that doesn't cover the body verifies
+     *  nothing) and `${timestamp}` (the timestamp header's value —
+     *  freshness must be BOUND to the HMAC: an unbound timestamp lets a
+     *  captured body+signature replay forever inside rolling
+     *  toleranceMs windows), joined with any literal glue the vendor
+     *  specifies (saperly: "${timestamp}.${rawBody}"). Both are
+     *  REQUIRED — the descriptor already demands a timestampHeader, so
+     *  a vendor without timestamp-bound signing needs its own scheme,
+     *  not a weaker template. */
     payload: z.string().min(1).refine(
         (template) => template.includes("${rawBody}"),
         "verify.payload must contain ${rawBody} — a signature that " +
             "does not cover the raw bytes verifies nothing",
+    ).refine(
+        (template) => template.includes("${timestamp}"),
+        "verify.payload must contain ${timestamp} — freshness unbound " +
+            "from the HMAC makes toleranceMs replayable",
     ),
     toleranceMs: z.number().int().positive(),
 });

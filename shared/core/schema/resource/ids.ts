@@ -1,10 +1,10 @@
 import { z } from "zod";
 
 /**
- * Resource doc identity — "<provider>/<name>", both lowercase kebab-case
- * (design D30). The name is INFERRED from the resource's folder
- * (`connectors/<provider>/resources/<name>/`), never authored — the
- * endpoint-id convention, applied to resources.
+ * Resource doc identity — "<provider>/<slug>", both lowercase kebab-case
+ * (design D30/D45). The AUTHORED `slug` on the def must equal the
+ * resource's folder name (`connectors/<provider>/resources/<slug>/`) —
+ * the loader and compiler both assert it.
  */
 /** The resource's FOLDER identity — lowercase kebab, the `<slug>` of
  *  `connectors/<provider>/resources/<slug>/` and the tail of the doc id

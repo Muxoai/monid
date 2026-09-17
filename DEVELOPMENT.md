@@ -124,10 +124,12 @@ validate input (JSON Schema)           → INVALID_INPUT
 
 Load gates fail closed in order: `BAD_DOC` → `UNSUPPORTED_DOC` → `UNKNOWN_FN` →
 `LINK_INTEGRITY` → `UNSUPPORTED_FN_ABI`; run-time contract violations are
-`FN_CONTRACT`. Transports: `directTransport` (local; env `<NAME>_API_KEY`,
-injectable fetch) and the `relayTransport` interface (hosted injection — secrets
-never enter the engine process). `start/poll/stop` are Temporal-activity-shaped;
-`run()` is the only sleeper.
+`FN_CONTRACT`. Transports: `directTransport` (local; env
+`<NAME>_CREDENTIALS_<FIELD>` per declared credential field, with the bare
+`<NAME>_API_KEY` alias for an `apiKey` field; injectable fetch) and the
+`relayTransport` interface (hosted injection — secrets never enter the engine
+process). `start/poll/stop` are Temporal-activity-shaped; `run()` is the only
+sleeper.
 
 ## Usage & billing
 
@@ -217,21 +219,23 @@ Webhooks are DECLARED on docs and EXECUTED by the host ingress, scope
 POSITIONAL: a hook on the provider def is the vendor-account stream
 (`webhooks[slug]`, no wrapper); a hook on a resource def is a per-resource
 registration (`subscribe` required there). Each carries a declarative HMAC
-`verify` descriptor (`payload` is a template that MUST contain `${rawBody}`)
-plus ONE pure `route(delivery) → {who, what}` fn — who ∈ resource / alias / run
-/ unhandled, what ∈ `run` / `signal-run` / `refresh` / `ignore`. No `subscribe`
-= manual registration — the host logs the callback URL to paste (saperly).
+`verify` descriptor (`payload` is a template that MUST contain `${rawBody}` and
+`${timestamp}` — freshness bound to the HMAC) plus ONE pure
+`route(delivery) → {who, what}` fn — who ∈ resource / alias / run / unhandled,
+what ∈ `run` / `signal-run` / `refresh` / `ignore`. No `subscribe` = manual
+registration — the host logs the callback URL to paste (saperly).
 
 Identity is guarded by the lock: an endpoint id defaults to `request.path`
 (trailing slashes stripped; declare `endpoint:` only when the native path is
 transport plumbing or empty), and `connectors/ids.lock.json` commits every
 published id — `deno task ids:check [--update]` fails on drift, so a vendor
-route move under a derived identity breaks CI instead of renaming silently. The LOCAL host
-loop: `deno task engine:run` persists provisions/releases in a Deno KV store at
-`.output/local.db` (its default ownership window; `--resources <file>` swaps in
-a fixture window), and `deno task webhook simulate|listen` signs / verifies /
-routes deliveries per the compiled descriptors (tunnels — cloudflared /
-tailscale / none — live in scripts only; the engine never listens).
+route move under a derived identity breaks CI instead of renaming silently. The
+LOCAL host loop: `deno task engine:run` persists provisions/releases in a Deno
+KV store at `.output/local.db` (its default ownership window;
+`--resources <file>` swaps in a fixture window), and
+`deno task webhook simulate|listen` signs / verifies / routes deliveries per the
+compiled descriptors (tunnels — cloudflared / tailscale / none — live in scripts
+only; the engine never listens).
 
 ## Configuration
 
@@ -322,14 +326,31 @@ Why tag-triggered, why a GitHub Release:
 | `deno task webhook listen <provider> [--port] [--tunnel cloudflared\|tailscale\|none] [--execute]`             | serve the ingress route locally for REAL deliveries (tunnels are scripts-only)                                                                                    |
 | `deno task ids:check [--update]`                                                                               | identity guard: compiled ids vs `connectors/ids.lock.json`                                                                                                        |
 | `deno task record <id> <scenario> [--body] [--query-params] [--path-params]`                                   | fixture recorder: live call, {req,res} captured (headers dropped), written to fixtures/                                                                           |
-| `deno task test` / `test:live`                                                                                 | replay tests (zero network) / live tests, auto-skipped without `<NAME>_API_KEY`                                                                                   |
+| `deno task test` / `test:live`                                                                                 | replay tests (zero network) / live tests, auto-skipped without `<NAME>_CREDENTIALS_<FIELD>`                                                                       |
 | `deno task check` / `lint` / `version:check`                                                                   | hygiene + contract guard                                                                                                                                          |
 
 ## Authoring guide
 
 - **Credentials**: omit `auth.credentials` for the standard `{apiKey}` shape
   (exa does) — declare it only for non-standard shapes. No secret VALUE ever
-  appears in a def, doc, bundle, or fixture.
+  appears in a def, doc, bundle, or fixture. A vendor that issues SEVERAL keys
+  (contactout: a work-email and a personal-email account) declares ONE
+  credential shape holding every key on the provider, and no provider `inject`;
+  each endpoint declares its own inline `inject` naming the key it sends. Which
+  key an endpoint uses is always visible in that endpoint's file. Locally, every
+  credential FIELD reads from its own variable — `<NAME>_CREDENTIALS_<FIELD>`,
+  dashes and camelCase humps underscored:
+
+  ```bash
+  export EXA_CREDENTIALS_API_KEY=...                  # or the EXA_API_KEY alias
+  export CONTACTOUT_CREDENTIALS_WORK_API_KEY=...
+  export CONTACTOUT_CREDENTIALS_PERSONAL_API_KEY=...
+  ```
+
+  One variable per field, so the environment and `auth.credentials` correspond
+  1:1. The only alias is the bare `<NAME>_API_KEY` for a field named `apiKey`;
+  the canonical name wins when both are set, and a variable set but empty fails
+  as `MISSING_CREDENTIAL` naming it rather than falling back.
 - **Meta roles**: `summary` = one line (list views); `description` = full
   capability text (inspect/agents); `notes` = operational CAVEATS, one
   standalone fact per entry (latency, result expiry, input shapes the vendor

@@ -353,8 +353,13 @@ export class LoadedEndpoint implements RunnableEndpoint {
      *  a mid-run crash never orphans an upstream resource). */
     async ensure(runInput: RunInput): Promise<ProvisionSeed[]> {
         if (!this.fns.ensures || this.fns.ensures.length === 0) return [];
+        // ctx.data.input is the VALIDATED (pre-toRequest) input — the
+        // fn-facing contract; utils bind to the DERIVED input so
+        // utils.request() sends post-toRequest body/query consistent
+        // with the derived URL.
         const input = validateInput(this.doc, runInput);
-        const request = this.requestInfo(this.deriveInput(runInput));
+        const derived = this.deriveInput(runInput);
+        const request = this.requestInfo(derived);
         const seeds: ProvisionSeed[] = [];
         // sequential, canonical order (uses then reads) — a later ensure
         // may depend on an earlier one's provision
@@ -362,7 +367,7 @@ export class LoadedEndpoint implements RunnableEndpoint {
             seeds.push(
                 ...await ensure(
                     { input, scope: { key: this.ctx.scopeKey ?? "local" } },
-                    this.utilsFor(input, request),
+                    this.utilsFor(derived, request),
                 ),
             );
         }
@@ -587,18 +592,31 @@ export class LoadedEndpoint implements RunnableEndpoint {
         // ONE identity for the whole run — idempotency keys stay stable
         // across every phase of this loop.
         const run: RunHandle = { runId: crypto.randomUUID() };
-        // inline ensure (v1 ordering): the OSS path has no persistence —
-        // seeds are surfaced to the log; hosted callers run ensure() as
-        // its own pre-start activity and persist.
+        // inline ensure (v1 ordering): seeds are handed to the host's
+        // ADMISSION port before start() executes, so the ownership gate
+        // sees them. Without the port they are logged LOUDLY, never
+        // silently dropped (hosted callers run ensure() as its own
+        // pre-start activity and persist themselves).
         const seeds = await this.ensure(runInput);
         if (seeds.length > 0) {
-            this.logger.info("ensure provisioned resources", {
-                id: this.doc.id,
-                seeds: seeds.map((seed) => ({
-                    resource: seed.resource,
-                    externalId: seed.externalId,
-                })),
-            });
+            const named = seeds.map((seed) => ({
+                resource: seed.resource,
+                externalId: seed.externalId,
+            }));
+            if (this.ctx.admit) {
+                await this.ctx.admit(seeds);
+                this.logger.info("ensure seeds admitted", {
+                    id: this.doc.id,
+                    seeds: named,
+                });
+            } else {
+                this.logger.warn(
+                    "ensure produced seeds but EngineCtx carries no " +
+                        "admit port — NOT persisted; keyed ownership " +
+                        "gates may answer 404",
+                    { id: this.doc.id, seeds: named },
+                );
+            }
         }
         let tick = await this.start(runInput, run);
         while (tick.kind === RunKind.RUNNING) {

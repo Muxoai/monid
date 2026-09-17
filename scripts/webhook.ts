@@ -22,6 +22,12 @@
  *
  * The signing secret: --secret ?? <PROVIDER>_WEBHOOK_SECRET ??
  * "local-webhook-secret" (simulate only — listen demands a real one).
+ *
+ * PROVIDER-SCOPE hooks only, for now: no resource-scope hook exists
+ * in-tree (saperly defers `subscribe` to its upcoming webhooks API), so
+ * the resource route (`/v1/providers/:provider/resource/{resourceId}/
+ * {slug}`) is not served here yet — add it alongside the first real
+ * resource-scope hook, resolved via sealResourceUnit.
  */
 import { Command } from "@cliffy/command";
 import {
@@ -39,7 +45,7 @@ import {
     instantiate,
 } from "@monid/connector-engine";
 import { compileToOutput } from "./lib.ts";
-import { KvResourceStore } from "./store/kv.ts";
+import { admitInto, KvResourceStore, persistEffects } from "./store/kv.ts";
 
 // ---------------------------------------------------------------------------
 // verify — the descriptor, executed (host-side crypto, raw bytes)
@@ -164,6 +170,7 @@ async function executeVerdict(
 ): Promise<void> {
     const what = verdict.what;
     const store = await KvResourceStore.open();
+    const log = (line: string) => console.error(`[webhook] ${line}`);
     try {
         switch (what.action) {
             case "run": {
@@ -171,12 +178,16 @@ async function executeVerdict(
                 const engine = new Engine({
                     transport: directTransport(),
                     resources: store,
+                    // same host ordering as engine:run — ensure seeds
+                    // persist BEFORE start, settle effects after
+                    admit: admitInto(store, log),
                     scopeKey: "local",
                 });
                 const loaded = await engine.load(
                     sealUnit(bundle, what.endpoint),
                 );
                 const result = await loaded.run(what.input);
+                await persistEffects(store, result.resources, log);
                 console.log(JSON.stringify(result, null, 2));
                 break;
             }

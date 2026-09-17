@@ -4,7 +4,7 @@
 
 ### Requirement: ResourceReader port and structurally-withheld capability
 `EngineCtx` SHALL gain `resources?: ResourceReader` with
-`owned({resource, externalId?}) → Promise<ResourceRow[]>`. The engine SHALL
+`owned({resource, externalId?}) → Promise<OwnedResource[]>`. The engine SHALL
 bind `utils.resources` into lifecycle/ensure fns ONLY when the doc declares
 a resource binding; access without one SHALL throw `RESOURCES_UNDECLARED`.
 A doc that declares a binding loaded into an engine without a reader SHALL
@@ -28,15 +28,19 @@ existence.
   existed, and nothing was sent upstream
 
 ### Requirement: Ensure runs before execution
-When the binding declares `ensure`, `start` SHALL run it after input
-validation and surface returned seeds on `RunStartResult.ensured` BEFORE
-executing the run, so the host can admit them first. `[]` means satisfied;
-an ownership-pointer conflict at the host is a lost race and also satisfied.
+The loaded endpoint SHALL expose `ensure(runInput) → Promise<ProvisionSeed[]>`
+as its OWN host-driven call: hosts run it as a pre-start activity and
+persist the returned seeds BEFORE `start()` executes. `[]` means
+satisfied; an ownership-pointer conflict at the host is a lost race and
+also satisfied. The convenience `run()` loop SHALL hand ensure's seeds to
+the host's `EngineCtx.admit` port before starting; absent the port,
+non-empty seeds SHALL be logged loudly as unpersisted (keyed ownership
+gates may answer the uniform 404), never dropped silently.
 
 #### Scenario: Ensure is engine-mechanics, host-money
 - **WHEN** ensure returns one seed
-- **THEN** the engine performs no admission itself — the seed rides the
-  result for the host workflow
+- **THEN** the engine performs no persistence itself — the seed goes to
+  the host's admission (a separate activity, or `EngineCtx.admit`)
 
 ### Requirement: Derived post-run resource outputs
 On successful settle, the engine SHALL evaluate the binding's derived
@@ -50,23 +54,25 @@ refreshes?, reconciles?}`. A CREATES `seed` throw on a 2xx SHALL fail
   released, refreshed, or reconciled)
 
 ### Requirement: loadResource executes resource ops
-`engine.loadResource(sealedUnit)` SHALL return `{check, release, refresh,
-actualCost, external}` over the compiled ops, each validating its outcome
-schema (FN_CONTRACT), with the same error taxonomy as lifecycle fns
-(retriable throw → `RESOURCE_OP_FAILED` retriable; `retriable: false` →
-FN_CONTRACT). Op fns SHALL receive `utils.external` bound to the same
-loaded doc.
+`engine.loadResource(sealedUnit)` SHALL return `{verify, release, refresh,
+reconcileUsage, view}` over the compiled lifecycle/meter/view fns, each
+validating its outcome schema (FN_CONTRACT), with the same error taxonomy
+as lifecycle fns (retriable throw → `RESOURCE_OP_FAILED` retriable;
+`retriable: false` → FN_CONTRACT). Every op takes the stored
+`OwnedResource` instance, identity- and data-schema-validated on the way
+in.
 
-#### Scenario: One reader for bill and preview
-- **WHEN** `getActualCost` calls `utils.external("storage", {window})`
-- **THEN** the doc's own compiled `externals.storage.read` executes — no
-  second implementation can drift
+#### Scenario: One meter for bill and reconcile
+- **WHEN** the host calls `reconcileUsage("storage", instance, window)`
+- **THEN** the doc's own compiled `reconcileUsage.storage.get` executes —
+  no second implementation can drift
 
 ### Requirement: Pure accrual arithmetic
-The loaded endpoint SHALL expose `accrued(elapsedMs): Usage` beside
-`estimate` when the doc declares `usage.accrue` — fn counts plus buffer,
-validated against the model, folded through `assembleUsage`. No IO, no
-state, no clock.
+The loaded endpoint SHALL expose `accrued(runInput, elapsedMs): Usage`
+beside `estimate` — the ESTIMATE re-run with `elapsedMs` set, meaningful
+when the doc declares `usage.updateEstimateEveryMs` (docs without it
+return the static estimate). Counts validated against the model, folded
+through `assembleUsage`. No IO, no state, no clock.
 
 #### Scenario: Host tops up holds from accrued
 - **WHEN** the host calls `accrued(90_000)` on place-calls
@@ -85,10 +91,14 @@ confirm settlement — the host bills its elapsed-based last resort), or
 - **THEN** usage settles from that envelope exactly as a poll settle would
 
 ### Requirement: Run identity and bounded in-phase sleep
-`start/poll/stop` SHALL accept optional trailing `run?: {runId?}` (the OSS
-`run()` and CLI mint a ULID when absent) and expose it as `data.run.runId`.
-`utils.sleep(ms)` SHALL be backed by `EngineCtx.sleep`, instant in replay,
-and capped per phase.
+`start/poll/stop` SHALL accept an optional trailing `run?: {runId: string}`
+handle and expose it as `data.run.runId`. The handle is the HOST's
+stability contract: hosts needing retry-stable vendor idempotency keys
+(Temporal activities) SHALL pass their own; the OSS `run()` loop mints ONE
+UUID for its whole loop. A direct phase call WITHOUT a handle gets a fresh
+UUID per call — valid but not retry-stable, by design. `utils.sleep(ms)`
+SHALL be backed by `EngineCtx.sleep`, instant in replay, and capped per
+phase.
 
 #### Scenario: Response headers reach fns
 - **WHEN** a lifecycle fn issues a request answered 302
