@@ -38,6 +38,7 @@ export const RECORDED_RES_HEADERS = [
     "retry-after",
     "x-api-units-cost-total-actual",
     "x-api-cache",
+    "x-credits-charged",
 ] as const;
 
 export const zRecordedCall = z.object({
