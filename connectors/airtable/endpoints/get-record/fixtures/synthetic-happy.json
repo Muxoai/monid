@@ -1,0 +1,24 @@
+{
+    "name": "synthetic-happy",
+    "description": "SYNTHETIC — not recorded. Shape from the Get Record reference example (airtable.com/developers/web/api/get-record, 2026-09-25): one record with id/createdTime/fields; ids are placeholders.",
+    "calls": [
+        {
+            "req": {
+                "method": "GET",
+                "url": "https://api.airtable.com/v0/appBase/tblTable/rec0000000000001"
+            },
+            "res": {
+                "status": 200,
+                "body": {
+                    "id": "rec0000000000001",
+                    "createdTime": "2026-09-01T10:00:00.000Z",
+                    "fields": {
+                        "Name": "Acme Corp",
+                        "Status": "Live",
+                        "MRR": 1200
+                    }
+                }
+            }
+        }
+    ]
+}

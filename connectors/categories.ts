@@ -343,4 +343,11 @@ export const LEAF_CATEGORIES = defineLeafCategories([
             "Tools to pull data from app stores, including Apple App Store " +
             "and Google Play listings, rankings, reviews, and more.",
     },
+    {
+        id: "databases",
+        displayName: "Databases",
+        description:
+            "Read and write records in hosted databases and bases " +
+            "(Airtable and similar).",
+    },
 ]);

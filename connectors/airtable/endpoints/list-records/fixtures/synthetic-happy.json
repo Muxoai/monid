@@ -1,0 +1,37 @@
+{
+    "name": "synthetic-happy",
+    "description": "SYNTHETIC — not recorded. Shape from the List Records reference example (airtable.com/developers/web/api/list-records, 2026-09-25): two records with id/createdTime/fields; ids are placeholders.",
+    "calls": [
+        {
+            "req": {
+                "method": "GET",
+                "url": "https://api.airtable.com/v0/appBase/tblTable"
+            },
+            "res": {
+                "status": 200,
+                "body": {
+                    "records": [
+                        {
+                            "id": "rec0000000000001",
+                            "createdTime": "2026-09-01T10:00:00.000Z",
+                            "fields": {
+                                "Name": "Acme Corp",
+                                "Status": "Live",
+                                "MRR": 1200
+                            }
+                        },
+                        {
+                            "id": "rec0000000000002",
+                            "createdTime": "2026-09-02T11:30:00.000Z",
+                            "fields": {
+                                "Name": "Globex",
+                                "Status": "Trial",
+                                "MRR": 0
+                            }
+                        }
+                    ]
+                }
+            }
+        }
+    ]
+}
